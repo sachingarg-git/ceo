@@ -32,7 +32,7 @@ const ALL_PAGES = [
 
 export default function Settings() {
   const { showToast, hasPermission } = useApp();
-  const [activeTab, setActiveTab] = useState('general');
+  const [activeTab, setActiveTab] = useState('users');
   const [masters, setMasters] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -169,7 +169,6 @@ export default function Settings() {
       {/* Tab Bar */}
       <div className="tab-bar" style={{ marginBottom: 20 }}>
         {[
-          { id: 'general', label: 'General' },
           { id: 'masters', label: 'Masters' },
           { id: 'users', label: 'Users' },
           { id: 'roles', label: 'Roles & Permissions' },
@@ -178,26 +177,6 @@ export default function Settings() {
           <button key={tab.id} className={`tab-btn${activeTab === tab.id ? ' active' : ''}`} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>
         ))}
       </div>
-
-      {/* General */}
-      {activeTab === 'general' && (
-        <div className="grid-2">
-          <div className="glass-card">
-            <div className="glass-card-header"><h3>Database Connection</h3></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-              <div className="sync-dot online" />
-              <span style={{ fontWeight: 600, fontSize: 13 }}>Connected</span>
-            </div>
-            <div className="form-group"><label className="form-label">Server</label><input className="form-input" value="MSSQL - 103.122.85.118:51440" readOnly /></div>
-            <div className="form-group"><label className="form-label">Database</label><input className="form-input" value="CEO_ProductivityDB" readOnly /></div>
-          </div>
-          <div className="glass-card">
-            <div className="glass-card-header"><h3>Application Info</h3></div>
-            <div className="form-group"><label className="form-label">Company</label><input className="form-input" value="WIZONE IT NETWORK INDIA PVT LTD" readOnly /></div>
-            <div className="form-group"><label className="form-label">Version</label><input className="form-input" value="2.0 (React + MSSQL)" readOnly /></div>
-          </div>
-        </div>
-      )}
 
       {/* Masters */}
       {activeTab === 'masters' && (

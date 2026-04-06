@@ -1,30 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useApp } from '../App';
 
-const TIME_SLOTS = [];
-for (let h = 7; h <= 19; h++) {
-  const hour12 = h > 12 ? h - 12 : h;
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  TIME_SLOTS.push({
-    label: `${hour12}:00 ${ampm}`,
-    key: `${String(h).padStart(2, '0')}:00`,
-  });
-}
+const TIME_SLOTS = [
+  '7:00 AM','7:30 AM','8:00 AM','8:30 AM','9:00 AM','9:30 AM',
+  '10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','12:30 PM',
+  '1:00 PM','1:30 PM','2:00 PM','2:30 PM','3:00 PM','3:30 PM',
+  '4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM','6:30 PM','7:00 PM'
+];
 
 export default function NextWeekPlan() {
   const { showToast } = useApp();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [weekOffset, setWeekOffset] = useState(0);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async (offset) => {
     setLoading(true);
     try {
-      const res = await api.getNextWeekPlan();
+      const res = await api.getNextWeekPlan(offset);
       if (res.success) {
         setData(res);
       } else {
@@ -35,19 +29,39 @@ export default function NextWeekPlan() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [showToast]);
 
-  function getTaskForSlot(dayIndex, timeKey) {
+  useEffect(() => {
+    loadData(weekOffset);
+  }, [weekOffset, loadData]);
+
+  function goThisWeek() { setWeekOffset(0); }
+  function goPrev() { setWeekOffset(w => w - 1); }
+  function goNext() { setWeekOffset(w => w + 1); }
+
+  function getTaskForSlot(dayIndex, timeSlot) {
     if (!data || !data.grid || !data.grid[dayIndex]) return null;
     const daySlots = data.grid[dayIndex];
-    const slot = daySlots.find(s => s.timeKey === timeKey || s.time === timeKey);
+    const slot = daySlots.find(s => s.time === timeSlot);
     return slot && slot.task ? slot.task : null;
   }
 
-  if (loading) {
+  function getTaskDisplay(task) {
+    if (!task) return null;
+    if (typeof task === 'string') return task;
+    return task.task || task.title || task.description || '';
+  }
+
+  function isHighPriority(task) {
+    if (!task || typeof task === 'string') return false;
+    const p = (task.priority || '').toLowerCase();
+    return p === 'high' || p === 'urgent' || p === 'critical';
+  }
+
+  if (loading && !data) {
     return (
       <div>
-        <div className="page-header"><h1>Next Week Plan</h1></div>
+        <div className="page-header"><div><h2>Week Plan</h2></div></div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <div className="spinner" />
           <p style={{ marginTop: '1rem', opacity: 0.7 }}>Loading...</p>
@@ -59,10 +73,10 @@ export default function NextWeekPlan() {
   if (!data) {
     return (
       <div>
-        <div className="page-header"><h1>Next Week Plan</h1></div>
+        <div className="page-header"><div><h2>Week Plan</h2></div></div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <p>Unable to load plan data.</p>
-          <button className="btn btn-primary" onClick={loadData}>Retry</button>
+          <button className="btn btn-primary" onClick={() => loadData(weekOffset)}>Retry</button>
         </div>
       </div>
     );
@@ -73,105 +87,105 @@ export default function NextWeekPlan() {
   return (
     <div>
       <div className="page-header">
-        <h1>Next Week Plan</h1>
-        <button className="btn btn-outline" onClick={loadData}>Refresh</button>
+        <div><h2>Week Plan</h2>
+          <p>{weekDates.length > 0 ? `${weekDates[0].date} - ${weekDates[weekDates.length - 1].date}` : ''}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button className="btn btn-outline btn-sm" onClick={goPrev} title="Previous Week">&larr; Prev</button>
+          <button className="btn btn-primary btn-sm" onClick={goThisWeek} disabled={weekOffset === 0}>This Week</button>
+          <button className="btn btn-outline btn-sm" onClick={goNext} title="Next Week">Next &rarr;</button>
+          <button className="btn btn-outline btn-sm" onClick={() => loadData(weekOffset)} title="Refresh" style={{ marginLeft: 8 }}>Refresh</button>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1.5rem' }}>
-        {/* Main Grid */}
-        <div className="glass-card" style={{ overflow: 'hidden' }}>
-          <div className="glass-card-header">
-            <span>Weekly Schedule</span>
-          </div>
-          <div className="table-container" style={{ overflowX: 'auto' }}>
-            <table className="data-table" style={{ minWidth: 700 }}>
-              <thead>
-                <tr>
-                  <th style={{ width: 90, position: 'sticky', left: 0, background: 'inherit', zIndex: 1 }}>Time</th>
-                  {weekDates.map((wd, i) => (
-                    <th key={i} style={{ textAlign: 'center', minWidth: 100 }}>
-                      <div style={{ fontWeight: 600 }}>{wd.dayName}</div>
-                      <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>{wd.date}</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {TIME_SLOTS.map(slot => (
-                  <tr key={slot.key}>
-                    <td style={{
-                      fontWeight: 500,
-                      fontSize: '0.8rem',
-                      whiteSpace: 'nowrap',
-                      opacity: 0.7,
-                      position: 'sticky',
-                      left: 0,
-                      background: 'inherit',
-                      zIndex: 1,
-                    }}>
-                      {slot.label}
-                    </td>
-                    {weekDates.map((_, dayIdx) => {
-                      const task = getTaskForSlot(dayIdx, slot.key);
-                      return (
-                        <td key={dayIdx} style={{
-                          textAlign: 'center',
-                          padding: '0.4rem',
-                          verticalAlign: 'top',
-                          minHeight: 40,
-                        }}>
-                          {task ? (
-                            <div style={{
-                              background: 'rgba(99, 102, 241, 0.1)',
-                              border: '1px solid rgba(99, 102, 241, 0.2)',
-                              borderRadius: 6,
-                              padding: '0.3rem 0.5rem',
-                              fontSize: '0.78rem',
-                              lineHeight: 1.3,
-                              wordBreak: 'break-word',
-                            }}>
-                              {task}
-                            </div>
-                          ) : null}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {/* NWP Grid */}
+      <div className="glass-card" style={{ overflow: 'hidden', marginBottom: '1.5rem' }}>
+        <div className="nwp-grid">
+          {/* Header row */}
+          <div className="nwp-header">Time</div>
+          {weekDates.map((wd, i) => (
+            <div key={i} className="nwp-header">
+              <div>{wd.dayName}</div>
+              <div style={{ fontSize: 9, opacity: 0.8, marginTop: 2 }}>{wd.date}</div>
+            </div>
+          ))}
 
-        {/* Unscheduled Panel */}
-        <div className="glass-card" style={{ alignSelf: 'flex-start' }}>
+          {/* Time slot rows */}
+          {TIME_SLOTS.map(slot => (
+            <React.Fragment key={slot}>
+              <div className="nwp-time">{slot}</div>
+              {weekDates.map((_, dayIdx) => {
+                const task = getTaskForSlot(dayIdx, slot);
+                const display = getTaskDisplay(task);
+                const highPri = isHighPriority(task);
+                return (
+                  <div
+                    key={dayIdx}
+                    className={`nwp-cell${display ? ' has-task' : ''}`}
+                    style={display ? {
+                      background: highPri ? 'rgba(239, 68, 68, 0.12)' : 'var(--success-bg)',
+                      color: highPri ? '#dc2626' : 'inherit',
+                    } : undefined}
+                    title={display || ''}
+                  >
+                    {display ? (
+                      <span style={{
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        lineHeight: 1.3,
+                        wordBreak: 'break-word',
+                      }}>
+                        {display}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      {/* Unscheduled Tasks Panel */}
+      {unscheduled.length > 0 && (
+        <div className="glass-card">
           <div className="glass-card-header">
-            <span>Unscheduled</span>
-            <span className="badge badge-warning" style={{ marginLeft: 6 }}>{unscheduled.length}</span>
+            <span>Unscheduled Tasks</span>
+            <span className="badge badge-warning" style={{ marginLeft: 8 }}>{unscheduled.length}</span>
           </div>
           <div style={{ padding: '0.75rem 1rem' }}>
-            {unscheduled.length === 0 ? (
-              <p style={{ opacity: 0.5, textAlign: 'center', padding: '1rem 0', fontSize: '0.85rem' }}>
-                All tasks scheduled
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {unscheduled.map((task, i) => (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {unscheduled.map((task, i) => {
+                const label = typeof task === 'string' ? task : (task.task || task.title || JSON.stringify(task));
+                const date = typeof task === 'object' ? (task.schedDate || task.date || '') : '';
+                return (
                   <div key={i} style={{
                     background: 'rgba(245, 158, 11, 0.08)',
                     border: '1px solid rgba(245, 158, 11, 0.15)',
                     borderRadius: 6,
                     padding: '0.5rem 0.75rem',
                     fontSize: '0.82rem',
+                    flex: '1 1 250px',
+                    maxWidth: 400,
                   }}>
-                    {typeof task === 'string' ? task : task.task || task.title || JSON.stringify(task)}
+                    <div style={{ fontWeight: 500 }}>{label}</div>
+                    {date && <div style={{ fontSize: '0.72rem', opacity: 0.6, marginTop: 2 }}>{date}</div>}
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '1rem', opacity: 0.5 }}>
+          <div className="spinner" style={{ width: 20, height: 20 }} />
+        </div>
+      )}
     </div>
   );
 }

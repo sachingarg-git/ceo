@@ -39,7 +39,7 @@ export const api = {
   updateDailyReport: (data) => request('/daily-report', { method: 'POST', body: JSON.stringify(data) }),
   getWeeklyScorecard: () => request('/weekly-scorecard'),
   updateWeeklyScorecard: (data) => request('/weekly-scorecard', { method: 'POST', body: JSON.stringify(data) }),
-  getNextWeekPlan: () => request('/next-week-plan'),
+  getNextWeekPlan: (weekOffset = 0) => request(`/next-week-plan?weekOffset=${weekOffset}`),
 
   // Info System
   getInfoSystem: () => request('/info-system'),

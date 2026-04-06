@@ -242,11 +242,12 @@ router.post('/weekly-scorecard', async (req, res) => {
 // GET /api/next-week-plan
 router.get('/next-week-plan', async (req, res) => {
   try {
+    const weekOffset = parseInt(req.query.weekOffset) || 0;
     const today = new Date(); today.setHours(0,0,0,0);
-    const currentDay = (today.getDay() + 6) % 7;
-    let daysToMon = (7 - currentDay) % 7;
-    if (daysToMon === 0) daysToMon = 7;
-    const nextMon = new Date(today); nextMon.setDate(nextMon.getDate() + daysToMon);
+    const currentDay = (today.getDay() + 6) % 7; // 0=Mon
+    // weekOffset=0 means current week (Monday of this week)
+    const thisMon = new Date(today); thisMon.setDate(thisMon.getDate() - currentDay);
+    const nextMon = new Date(thisMon); nextMon.setDate(nextMon.getDate() + (weekOffset * 7));
 
     const TIME_SLOTS = [
       '7:00 AM','7:30 AM','8:00 AM','8:30 AM','9:00 AM','9:30 AM',
