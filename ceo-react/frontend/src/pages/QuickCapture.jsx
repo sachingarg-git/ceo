@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { api } from '../api';
 import { useApp } from '../App';
 
@@ -9,9 +9,56 @@ const TIME_SLOTS = [
   '4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM','6:30 PM','7:00 PM'
 ];
 
+/* ── helpers ─────────────────────────────────────────────── */
+
+function parseTimeSlot(slot) {
+  if (!slot) return null;
+  const m = slot.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const period = m[3].toUpperCase();
+  if (period === 'PM' && h !== 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function nowMinutes() {
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function formatCreated(dateStr, timeStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const display = parts[2] + '-' + parts[1] + '-' + parts[0];
+  return timeStr ? display + ' ' + timeStr : display;
+}
+
+function currentTimeFormatted() {
+  const d = new Date();
+  let h = d.getHours();
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return h + ':' + min + ' ' + ampm;
+}
+
+/* ── column map for keyboard nav ─────────────────────────── */
+const COL_COUNT = 14; // checkbox(0), #(1), created(2), desc(3), priority(4), schedDate(5), deadline(6), sendTo(7), batch(8), slStatus(9), from(10), to(11), notes(12), actions(13)
+
+/* ── component ───────────────────────────────────────────── */
+
 export default function QuickCapture() {
   const { showToast } = useApp();
   const [rows, setRows] = useState([]);
+  const [recurringTasks, setRecurringTasks] = useState([]);
   const [masters, setMasters] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -30,56 +77,138 @@ export default function QuickCapture() {
   const [slotConflict, setSlotConflict] = useState('');
   const [deleteId, setDeleteId] = useState(null);
 
+  const tbodyRef = useRef(null);
+
   useEffect(() => { loadData(); }, []);
 
   function getEmptyForm() {
-    return { description: '', priority: 'Medium', batchType: '', sendTo: 'Someday List', slStatus: 'Scheduled', schedDate: '', schedTimeFrom: '', schedTimeTo: '', deadline: '', notes: '' };
+    return {
+      description: '', priority: 'Medium', batchType: '', sendTo: 'Someday List',
+      slStatus: 'Scheduled', schedDate: '', schedTimeFrom: '', schedTimeTo: '',
+      deadline: '', notes: ''
+    };
   }
 
   async function loadData() {
     setLoading(true);
     try {
-      const [captureRes, mastersRes] = await Promise.all([api.getQuickCapture(), api.getMasters()]);
+      const [captureRes, mastersRes, recurRes] = await Promise.all([
+        api.getQuickCapture(), api.getMasters(), api.getRecurringTasks()
+      ]);
       if (captureRes.success) setRows(captureRes.rows || []);
       if (mastersRes.success) setMasters(mastersRes.masters);
+      if (recurRes.success) setRecurringTasks(recurRes.rows || []);
     } catch { showToast('Error loading data', 'error'); }
     setLoading(false);
   }
 
-  // Build booked slots map: { "2026-04-05|9:00 AM": taskId }
-  const bookedSlots = useMemo(() => {
+  /* ── booked slots map: { "2026-04-05": Set(minuteValue) } ── */
+  const bookedRanges = useMemo(() => {
     const map = {};
+
+    function addRange(dateStr, fromSlot, toSlot, taskId) {
+      if (!dateStr || !fromSlot) return;
+      const fromMin = parseTimeSlot(fromSlot);
+      const toMin = toSlot ? parseTimeSlot(toSlot) : (fromMin !== null ? fromMin + 30 : null);
+      if (fromMin === null) return;
+      const endMin = toMin !== null ? toMin : fromMin + 30;
+      if (!map[dateStr]) map[dateStr] = {};
+      // mark every 30-min slot from fromMin up to (but not including) endMin
+      for (let m = fromMin; m < endMin; m += 30) {
+        if (!map[dateStr][m]) map[dateStr][m] = [];
+        map[dateStr][m].push(taskId);
+      }
+    }
+
     rows.forEach(r => {
       if (r.schedDate && r.schedTimeFrom) {
-        const key = r.schedDate + '|' + r.schedTimeFrom;
-        map[key] = r.id;
+        addRange(r.schedDate, r.schedTimeFrom, r.schedTimeTo, r.id);
       }
     });
-    return map;
-  }, [rows]);
 
-  // Check slot conflict when date or timeFrom changes
+    // recurring tasks: use _nextOccurrenceISO (date part) + timeSlot
+    recurringTasks.forEach(rt => {
+      if (rt.status !== 'Active' && rt.status !== 'active') return;
+      if (rt._nextOccurrenceISO && rt.timeSlot) {
+        const dateStr = rt._nextOccurrenceISO.substring(0, 10);
+        addRange(dateStr, rt.timeSlot, null, 'recurring-' + rt.id);
+      }
+    });
+
+    return map;
+  }, [rows, recurringTasks]);
+
+  /* ── recurring conflict check for QC rows ── */
+  const recurringConflicts = useMemo(() => {
+    const conflicts = new Set();
+    if (!recurringTasks.length) return conflicts;
+    rows.forEach(r => {
+      if (!r.schedDate || !r.schedTimeFrom) return;
+      recurringTasks.forEach(rt => {
+        if (rt.status !== 'Active' && rt.status !== 'active') return;
+        if (!rt._nextOccurrenceISO || !rt.timeSlot) return;
+        const rtDate = rt._nextOccurrenceISO.substring(0, 10);
+        if (r.schedDate === rtDate && r.schedTimeFrom === rt.timeSlot) {
+          conflicts.add(r.id);
+        }
+      });
+    });
+    return conflicts;
+  }, [rows, recurringTasks]);
+
+  function isSlotBooked(dateStr, slot, excludeTaskId) {
+    if (!dateStr || !slot) return false;
+    const slotMin = parseTimeSlot(slot);
+    if (slotMin === null) return false;
+    const dateMap = bookedRanges[dateStr];
+    if (!dateMap || !dateMap[slotMin]) return false;
+    const ids = dateMap[slotMin];
+    if (excludeTaskId) {
+      return ids.some(id => id !== excludeTaskId);
+    }
+    return ids.length > 0;
+  }
+
+  function getFilteredSlots(dateStr, excludeTaskId) {
+    const today = todayISO();
+    const isToday = dateStr === today;
+    const currentMin = isToday ? nowMinutes() : -1;
+
+    return TIME_SLOTS.map(slot => {
+      const slotMin = parseTimeSlot(slot);
+      const isPast = isToday && slotMin !== null && slotMin <= currentMin;
+      const booked = isSlotBooked(dateStr, slot, excludeTaskId);
+      return { slot, disabled: isPast || booked, label: booked ? slot + ' (Booked)' : slot, isPast, booked };
+    });
+  }
+
   function checkSlotConflict(date, timeFrom, currentId) {
     if (!date || !timeFrom) { setSlotConflict(''); return false; }
-    const key = date + '|' + timeFrom;
-    const existingId = bookedSlots[key];
-    if (existingId && existingId !== currentId) {
-      const existing = rows.find(r => r.id === existingId);
-      setSlotConflict(`Slot already booked: "${existing?.description || 'Task #' + existingId}" is scheduled at ${timeFrom} on ${date}`);
+    if (isSlotBooked(date, timeFrom, currentId)) {
+      setSlotConflict('Slot already booked at ' + timeFrom + ' on ' + date);
       return true;
     }
     setSlotConflict('');
     return false;
   }
 
-  // Get available "To" slots based on selected "From"
-  function getToSlots(fromSlot) {
-    if (!fromSlot) return TIME_SLOTS;
+  function getToSlots(fromSlot, dateStr, excludeTaskId) {
+    if (!fromSlot) return [];
     const fromIdx = TIME_SLOTS.indexOf(fromSlot);
-    if (fromIdx < 0) return TIME_SLOTS;
-    return TIME_SLOTS.slice(fromIdx + 1);
+    if (fromIdx < 0) return [];
+    const afterSlots = TIME_SLOTS.slice(fromIdx + 1);
+    if (!dateStr) return afterSlots;
+    const today = todayISO();
+    const isToday = dateStr === today;
+    const currentMin = isToday ? nowMinutes() : -1;
+    return afterSlots.map(slot => {
+      const slotMin = parseTimeSlot(slot);
+      const isPast = isToday && slotMin !== null && slotMin <= currentMin;
+      return { slot, disabled: isPast, label: slot };
+    });
   }
 
+  /* ── filtering ── */
   const filtered = rows.filter(r => {
     if (search && !(r.description || '').toLowerCase().includes(search.toLowerCase())) return false;
     if (filterSendTo && r.sendTo !== filterSendTo) return false;
@@ -88,26 +217,35 @@ export default function QuickCapture() {
     return true;
   });
 
+  /* ── inline cell change ── */
   async function handleCellChange(id, field, value) {
-    // Check slot conflict for time changes
+    const row = rows.find(r => r.id === id);
+    const updates = { [field]: value };
+
     if (field === 'schedTimeFrom' || field === 'schedDate') {
-      const row = rows.find(r => r.id === id);
       const date = field === 'schedDate' ? value : (row?.schedDate || '');
       const time = field === 'schedTimeFrom' ? value : (row?.schedTimeFrom || '');
-      if (date && time) {
-        const key = date + '|' + time;
-        const existingId = bookedSlots[key];
-        if (existingId && existingId !== id) {
-          const existing = rows.find(r => r.id === existingId);
-          showToast(`Slot already booked by "${existing?.description}"`, 'warning');
-          return;
-        }
+      if (date && time && isSlotBooked(date, time, id)) {
+        showToast('Slot already booked', 'warning');
+        return;
       }
     }
-    setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
-    try { await api.updateTask(id, { [field]: value }); } catch { showToast('Failed to save', 'error'); }
+
+    // Sched Date -> auto-fill deadline + clear from/to if cleared
+    if (field === 'schedDate') {
+      if (value) {
+        if (!row?.deadline) updates.deadline = value;
+      } else {
+        updates.schedTimeFrom = '';
+        updates.schedTimeTo = '';
+      }
+    }
+
+    setRows(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+    try { await api.updateTask(id, updates); } catch { showToast('Failed to save', 'error'); }
   }
 
+  /* ── modal ── */
   function openAddModal() {
     setEditingId(null);
     setForm(getEmptyForm());
@@ -119,8 +257,16 @@ export default function QuickCapture() {
 
   function handleFormChange(field, value) {
     const updated = { ...form, [field]: value };
-    setForm(updated);
-    // Auto-check slot conflict
+
+    if (field === 'schedDate') {
+      if (!value) {
+        updated.schedTimeFrom = '';
+        updated.schedTimeTo = '';
+      } else {
+        if (!updated.deadline) updated.deadline = value;
+      }
+    }
+
     if (field === 'schedDate' || field === 'schedTimeFrom') {
       checkSlotConflict(
         field === 'schedDate' ? value : form.schedDate,
@@ -128,25 +274,30 @@ export default function QuickCapture() {
         editingId
       );
     }
-    // Auto-set To slot to next 30 min after From
+
     if (field === 'schedTimeFrom' && value) {
       const fromIdx = TIME_SLOTS.indexOf(value);
       if (fromIdx >= 0 && fromIdx < TIME_SLOTS.length - 1) {
         updated.schedTimeTo = TIME_SLOTS[fromIdx + 1];
-        setForm(updated);
       }
     }
+
+    setForm(updated);
   }
 
   async function handleSave() {
     if (!form.description.trim()) { showToast('Task description is required', 'warning'); return; }
-    // Final slot conflict check
     if (form.schedDate && form.schedTimeFrom) {
       const hasConflict = checkSlotConflict(form.schedDate, form.schedTimeFrom, editingId);
       if (hasConflict) { showToast('Cannot save - time slot already booked!', 'error'); return; }
     }
     try {
-      const res = editingId ? await api.updateTask(editingId, form) : await api.addTask(form);
+      const payload = { ...form };
+      if (!editingId) {
+        payload.date = todayISO();
+        payload.time = currentTimeFormatted();
+      }
+      const res = editingId ? await api.updateTask(editingId, payload) : await api.addTask(payload);
       if (res.success) { showToast(editingId ? 'Task updated' : 'Task added', 'success'); closeModal(); loadData(); }
       else showToast('Failed to save', 'error');
     } catch { showToast('Error saving task', 'error'); }
@@ -163,13 +314,15 @@ export default function QuickCapture() {
     const lines = bulkText.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length === 0) { showToast('No tasks to add', 'warning'); return; }
     let added = 0;
+    const now = todayISO();
+    const nowTime = currentTimeFormatted();
     for (const line of lines) {
       try {
-        const res = await api.addTask({ description: line, priority: 'Medium', sendTo: 'Someday List', slStatus: 'Scheduled' });
+        const res = await api.addTask({ description: line, priority: 'Medium', sendTo: 'Someday List', slStatus: 'Scheduled', date: now, time: nowTime });
         if (res.success) added++;
-      } catch {}
+      } catch { /* skip */ }
     }
-    showToast(`${added} tasks added`, 'success');
+    showToast(added + ' tasks added', 'success');
     setBulkText(''); setShowBulk(false); loadData();
   }
 
@@ -178,12 +331,53 @@ export default function QuickCapture() {
   }
   function toggleSelectAll(checked) { setSelected(checked ? new Set(filtered.map(r => r.id)) : new Set()); }
   async function deleteSelected() {
-    for (const id of selected) { try { await api.deleteTask(id); } catch {} }
-    showToast(`${selected.size} tasks deleted`, 'success'); setSelected(new Set()); loadData();
+    for (const id of selected) { try { await api.deleteTask(id); } catch { /* skip */ } }
+    showToast(selected.size + ' tasks deleted', 'success'); setSelected(new Set()); loadData();
   }
+
+  /* ── keyboard navigation ── */
+  const handleKeyDown = useCallback((e) => {
+    const cell = e.target.closest('[data-row][data-col]');
+    if (!cell || !tbodyRef.current) return;
+
+    const row = parseInt(cell.dataset.row, 10);
+    const col = parseInt(cell.dataset.col, 10);
+    let targetRow = row;
+    let targetCol = col;
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      targetCol = col + 1;
+      if (targetCol >= COL_COUNT) { targetCol = 3; targetRow = row + 1; }
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      targetCol = col + 1;
+      if (targetCol >= COL_COUNT) return;
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      targetCol = col - 1;
+      if (targetCol < 0) return;
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      targetRow = row + 1;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      targetRow = row - 1;
+      if (targetRow < 0) return;
+    } else {
+      return;
+    }
+
+    const target = tbodyRef.current.querySelector('[data-row="' + targetRow + '"][data-col="' + targetCol + '"]');
+    if (target) {
+      const focusable = target.querySelector('input, select, textarea, button') || target;
+      focusable.focus();
+    }
+  }, []);
 
   const bulkCount = bulkText.split('\n').filter(l => l.trim()).length;
 
+  /* ── loading state ── */
   if (loading) {
     return (
       <div>
@@ -192,6 +386,11 @@ export default function QuickCapture() {
       </div>
     );
   }
+
+  const modalFromDisabled = !form.schedDate;
+  const modalToDisabled = !form.schedDate;
+  const modalSlots = form.schedDate ? getFilteredSlots(form.schedDate, editingId) : [];
+  const modalToSlotList = getToSlots(form.schedTimeFrom, form.schedDate, editingId);
 
   return (
     <div>
@@ -203,6 +402,7 @@ export default function QuickCapture() {
         </div>
       </div>
 
+      {/* Bulk Add */}
       {showBulk && (
         <div className="glass-card" style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, color: 'var(--secondary)' }}>&#9889; Bulk Quick Capture</div>
@@ -217,6 +417,7 @@ export default function QuickCapture() {
         </div>
       )}
 
+      {/* Filter Bar */}
       <div className="filter-bar">
         <input type="text" className="form-input" placeholder="Search tasks..." value={search} onChange={e => setSearch(e.target.value)} style={{ maxWidth: 220 }} />
         <select className="form-select" value={filterSendTo} onChange={e => setFilterSendTo(e.target.value)} style={{ maxWidth: 160 }}>
@@ -236,7 +437,7 @@ export default function QuickCapture() {
         <div className="ss-toolbar">
           <div className="ss-toolbar-left">
             <input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} checked={selected.size > 0 && selected.size === filtered.length} />
-            <button className={`ss-del-btn${selected.size > 0 ? ' active' : ''}`} onClick={deleteSelected} disabled={selected.size === 0}>&#10005; Delete</button>
+            <button className={'ss-del-btn' + (selected.size > 0 ? ' active' : '')} onClick={deleteSelected} disabled={selected.size === 0}>&#10005; Delete</button>
             {selected.size > 0 && <span className="ss-sel-count">{selected.size} selected</span>}
           </div>
         </div>
@@ -246,6 +447,7 @@ export default function QuickCapture() {
               <tr>
                 <th style={{ width: 28 }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>
                 <th style={{ width: 28 }}>#</th>
+                <th style={{ width: 130 }}>Created</th>
                 <th style={{ minWidth: 200 }}>Description</th>
                 <th style={{ width: 80 }}>Priority</th>
                 <th style={{ width: 95 }}>Sched Date</th>
@@ -259,63 +461,118 @@ export default function QuickCapture() {
                 <th style={{ width: 50 }}>Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody ref={tbodyRef} onKeyDown={handleKeyDown}>
               {filtered.length === 0 ? (
-                <tr><td colSpan={13} style={{ textAlign: 'center', padding: 30, color: 'var(--muted)' }}>
+                <tr><td colSpan={14} style={{ textAlign: 'center', padding: 30, color: 'var(--muted)' }}>
                   {rows.length === 0 ? <>&#9889; No tasks captured yet. Click "Bulk Add" or "Add Task" to get started!</> : 'No tasks match your filters.'}
                 </td></tr>
-              ) : filtered.map((row, idx) => (
-                <tr key={row.id} className={row.slStatus === 'Completed' ? 'ss-row-done' : ''}>
-                  <td style={{ textAlign: 'center' }}><input type="checkbox" className="ss-check" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} /></td>
-                  <td className="ss-num">{idx + 1}</td>
-                  <td><input className="ss-cell" defaultValue={row.description} onBlur={e => { if (e.target.value !== row.description) handleCellChange(row.id, 'description', e.target.value); }} /></td>
-                  <td>
-                    <select className="ss-cell" value={row.priority || ''} onChange={e => handleCellChange(row.id, 'priority', e.target.value)}>
-                      <option value="">-</option>
-                      {(masters?.priority || ['High','Medium','Low']).map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </td>
-                  <td><input type="date" className="ss-cell ss-date-only" value={row.schedDate || ''} onChange={e => handleCellChange(row.id, 'schedDate', e.target.value)} /></td>
-                  <td><input type="date" className="ss-cell ss-date-only" value={row.deadline || ''} onChange={e => handleCellChange(row.id, 'deadline', e.target.value)} /></td>
-                  <td>
-                    <select className="ss-cell" value={row.sendTo || ''} onChange={e => handleCellChange(row.id, 'sendTo', e.target.value)}>
-                      <option value="Someday List">Someday List</option><option value="Information System">Information System</option>
-                    </select>
-                  </td>
-                  <td>
-                    <select className="ss-cell" value={row.batchType || ''} onChange={e => handleCellChange(row.id, 'batchType', e.target.value)}>
-                      <option value="">-</option>
-                      {(masters?.batchType || []).map(b => <option key={b} value={b}>{b}</option>)}
-                    </select>
-                  </td>
-                  <td>
-                    <select className="ss-cell" value={row.slStatus || ''} onChange={e => handleCellChange(row.id, 'slStatus', e.target.value)}>
-                      {(masters?.schedStatus || ['Scheduled','Waiting','Completed','Skipped']).map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </td>
-                  <td>
-                    <select className="ss-cell" value={row.schedTimeFrom || ''} onChange={e => handleCellChange(row.id, 'schedTimeFrom', e.target.value)}>
-                      <option value="">-</option>
-                      {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </td>
-                  <td>
-                    <select className="ss-cell" value={row.schedTimeTo || ''} onChange={e => handleCellChange(row.id, 'schedTimeTo', e.target.value)}>
-                      <option value="">-</option>
-                      {getToSlots(row.schedTimeFrom).map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </td>
-                  <td><input className="ss-cell" defaultValue={row.notes || ''} onBlur={e => { if (e.target.value !== (row.notes||'')) handleCellChange(row.id, 'notes', e.target.value); }} /></td>
-                  <td style={{ textAlign: 'center' }}><button className="ss-del" title="Delete" onClick={() => setDeleteId(row.id)}>&#10005;</button></td>
-                </tr>
-              ))}
+              ) : filtered.map((row, idx) => {
+                const hasSchedDate = !!row.schedDate;
+                const fromSlots = hasSchedDate ? getFilteredSlots(row.schedDate, row.id) : [];
+                const toSlotList = getToSlots(row.schedTimeFrom, row.schedDate, row.id);
+                const hasRecurConflict = recurringConflicts.has(row.id);
+
+                return (
+                  <tr key={row.id} className={row.slStatus === 'Completed' ? 'ss-row-done' : ''}>
+                    {/* 0: checkbox */}
+                    <td data-row={idx} data-col={0} style={{ textAlign: 'center' }}>
+                      <input type="checkbox" className="ss-check" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} />
+                    </td>
+                    {/* 1: # */}
+                    <td data-row={idx} data-col={1} className="ss-num">
+                      {idx + 1}
+                      {hasRecurConflict && (
+                        <span title="Conflicts with a recurring task" style={{ color: 'var(--warning, #f59e0b)', marginLeft: 4, cursor: 'help', fontSize: 13 }}>&#9888;</span>
+                      )}
+                    </td>
+                    {/* 2: Created (read-only) */}
+                    <td data-row={idx} data-col={2} style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                      {formatCreated(row.date, row.time)}
+                    </td>
+                    {/* 3: Description */}
+                    <td data-row={idx} data-col={3}>
+                      <input className="ss-cell" defaultValue={row.description}
+                        onBlur={e => { if (e.target.value !== row.description) handleCellChange(row.id, 'description', e.target.value); }} />
+                    </td>
+                    {/* 4: Priority */}
+                    <td data-row={idx} data-col={4}>
+                      <select className="ss-cell" value={row.priority || ''} onChange={e => handleCellChange(row.id, 'priority', e.target.value)}>
+                        <option value="">-</option>
+                        {(masters?.priority || ['High','Medium','Low']).map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </td>
+                    {/* 5: Sched Date */}
+                    <td data-row={idx} data-col={5}>
+                      <input type="date" className="ss-cell ss-date-only" value={row.schedDate || ''}
+                        onChange={e => handleCellChange(row.id, 'schedDate', e.target.value)} />
+                    </td>
+                    {/* 6: Deadline */}
+                    <td data-row={idx} data-col={6}>
+                      <input type="date" className="ss-cell ss-date-only" value={row.deadline || ''}
+                        onChange={e => handleCellChange(row.id, 'deadline', e.target.value)} />
+                    </td>
+                    {/* 7: Send To */}
+                    <td data-row={idx} data-col={7}>
+                      <select className="ss-cell" value={row.sendTo || ''} onChange={e => handleCellChange(row.id, 'sendTo', e.target.value)}>
+                        <option value="Someday List">Someday List</option><option value="Information System">Information System</option>
+                      </select>
+                    </td>
+                    {/* 8: Batch */}
+                    <td data-row={idx} data-col={8}>
+                      <select className="ss-cell" value={row.batchType || ''} onChange={e => handleCellChange(row.id, 'batchType', e.target.value)}>
+                        <option value="">-</option>
+                        {(masters?.batchType || []).map(b => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </td>
+                    {/* 9: SL Status */}
+                    <td data-row={idx} data-col={9}>
+                      <select className="ss-cell" value={row.slStatus || ''} onChange={e => handleCellChange(row.id, 'slStatus', e.target.value)}>
+                        {(masters?.schedStatus || ['Scheduled','Waiting','Completed','Skipped']).map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    {/* 10: From */}
+                    <td data-row={idx} data-col={10}>
+                      <select className="ss-cell" value={row.schedTimeFrom || ''}
+                        disabled={!hasSchedDate}
+                        style={!hasSchedDate ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                        onChange={e => handleCellChange(row.id, 'schedTimeFrom', e.target.value)}>
+                        <option value="">-</option>
+                        {fromSlots.map(s => (
+                          <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    {/* 11: To */}
+                    <td data-row={idx} data-col={11}>
+                      <select className="ss-cell" value={row.schedTimeTo || ''}
+                        disabled={!hasSchedDate}
+                        style={!hasSchedDate ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                        onChange={e => handleCellChange(row.id, 'schedTimeTo', e.target.value)}>
+                        <option value="">-</option>
+                        {Array.isArray(toSlotList) && toSlotList.length > 0 && typeof toSlotList[0] === 'object'
+                          ? toSlotList.map(s => <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>)
+                          : (toSlotList || []).map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </td>
+                    {/* 12: Notes */}
+                    <td data-row={idx} data-col={12}>
+                      <input className="ss-cell" defaultValue={row.notes || ''}
+                        onBlur={e => { if (e.target.value !== (row.notes || '')) handleCellChange(row.id, 'notes', e.target.value); }} />
+                    </td>
+                    {/* 13: Actions */}
+                    <td data-row={idx} data-col={13} style={{ textAlign: 'center' }}>
+                      <button className="ss-del" title="Delete" onClick={() => setDeleteId(row.id)}>&#10005;</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
       {/* Add/Edit Task Modal */}
-      <div className={`modal-overlay${modalOpen ? ' show' : ''}`} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className={'modal-overlay' + (modalOpen ? ' show' : '')} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
         <div className="modal">
           <div className="modal-header">
             <h3>{editingId ? 'Edit Task' : 'Add New Task'}</h3>
@@ -362,23 +619,29 @@ export default function QuickCapture() {
               </div>
               <div className="form-group">
                 <label className="form-label">Time From</label>
-                <select className="form-select" value={form.schedTimeFrom} onChange={e => handleFormChange('schedTimeFrom', e.target.value)}>
+                <select className="form-select" value={form.schedTimeFrom}
+                  disabled={modalFromDisabled}
+                  style={modalFromDisabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                  onChange={e => handleFormChange('schedTimeFrom', e.target.value)}>
                   <option value="">Select slot...</option>
-                  {TIME_SLOTS.map(t => {
-                    const isBooked = form.schedDate && bookedSlots[form.schedDate + '|' + t] && bookedSlots[form.schedDate + '|' + t] !== editingId;
-                    return <option key={t} value={t} disabled={isBooked}>{t}{isBooked ? ' (Booked)' : ''}</option>;
-                  })}
+                  {modalSlots.map(s => (
+                    <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>
+                  ))}
                 </select>
               </div>
               <div className="form-group">
                 <label className="form-label">Time To</label>
-                <select className="form-select" value={form.schedTimeTo} onChange={e => handleFormChange('schedTimeTo', e.target.value)}>
+                <select className="form-select" value={form.schedTimeTo}
+                  disabled={modalToDisabled}
+                  style={modalToDisabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                  onChange={e => handleFormChange('schedTimeTo', e.target.value)}>
                   <option value="">Select slot...</option>
-                  {getToSlots(form.schedTimeFrom).map(t => <option key={t} value={t}>{t}</option>)}
+                  {Array.isArray(modalToSlotList) && modalToSlotList.length > 0 && typeof modalToSlotList[0] === 'object'
+                    ? modalToSlotList.map(s => <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>)
+                    : (modalToSlotList || []).map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
             </div>
-            {/* Slot conflict warning */}
             {slotConflict && (
               <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: '8px 12px', borderRadius: 8, fontSize: 11, fontWeight: 600, marginBottom: 12, border: '1px solid var(--danger)' }}>
                 &#9888; {slotConflict}
@@ -401,7 +664,7 @@ export default function QuickCapture() {
       </div>
 
       {/* Delete Confirmation */}
-      <div className={`modal-overlay${deleteId ? ' show' : ''}`} onClick={e => { if (e.target === e.currentTarget) setDeleteId(null); }}>
+      <div className={'modal-overlay' + (deleteId ? ' show' : '')} onClick={e => { if (e.target === e.currentTarget) setDeleteId(null); }}>
         <div className="modal" style={{ maxWidth: 400 }}>
           <div className="modal-header">
             <h3>Confirm Delete</h3>

@@ -2,9 +2,21 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useApp } from '../App';
 
+function formatDate(val) {
+  if (!val) return '';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return val;
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch {
+    return val;
+  }
+}
+
 export default function InfoSystem() {
   const { showToast } = useApp();
-  const [rows, setRows] = useState([]);
+  const [infoRows, setInfoRows] = useState([]);
+  const [qcRows, setQcRows] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState('');
@@ -21,53 +33,103 @@ export default function InfoSystem() {
   async function loadData() {
     setLoading(true);
     try {
-      const [infoRes, masterRes] = await Promise.all([
+      const [infoRes, qcRes, masterRes] = await Promise.all([
         api.getInfoSystem(),
+        api.getQuickCapture(),
         api.getMasters(),
       ]);
-      if (infoRes.success) setRows(infoRes.rows || []);
+      if (infoRes.success) setInfoRows(infoRes.rows || []);
+      if (qcRes.success) {
+        const qcFiltered = (qcRes.rows || []).filter(
+          r => r.sendTo === 'Information System'
+        );
+        setQcRows(qcFiltered);
+      }
       if (masterRes.success && masterRes.masters) {
         setCategories(masterRes.masters.infoCategory || []);
       }
     } catch {
-      showToast('Error loading information system', 'error');
+      showToast('Error loading Information System', 'error');
     } finally {
       setLoading(false);
     }
   }
 
+  /** Combine info-system native rows and QC-sourced rows into a unified list */
+  const allRows = useMemo(() => {
+    const native = infoRows.map(r => ({
+      ...r,
+      _source: 'native',
+      _displayTitle: r.title || r.description || '',
+      _displayDate: r.dateAdded || r.createdAt || '',
+      _displayCategory: r.category || 'Uncategorized',
+      _displayNotes: r.notes || '',
+      _displayPriority: r.priority || '',
+    }));
+
+    const fromQc = qcRows.map((r, i) => ({
+      ...r,
+      _source: 'qc',
+      _qcId: r.id,
+      _displayTitle: r.description || r.title || r.task || '',
+      _displayDate: r.createdAt || r.createdDate || r.schedDate || '',
+      _displayCategory: r.category || r.batchType || 'From Quick Capture',
+      _displayNotes: r.notes || '',
+      _displayPriority: r.priority || '',
+    }));
+
+    return [...native, ...fromQc];
+  }, [infoRows, qcRows]);
+
   const filtered = useMemo(() => {
-    return rows.filter(r => {
-      if (filterCategory && r.category !== filterCategory) return false;
+    return allRows.filter(r => {
+      if (filterCategory) {
+        if (filterCategory === '__qc__') {
+          if (r._source !== 'qc') return false;
+        } else {
+          if (r._displayCategory !== filterCategory) return false;
+        }
+      }
       if (search) {
         const q = search.toLowerCase();
         return (
-          (r.title || '').toLowerCase().includes(q) ||
+          (r._displayTitle || '').toLowerCase().includes(q) ||
           (r.content || '').toLowerCase().includes(q) ||
-          (r.notes || '').toLowerCase().includes(q)
+          (r._displayNotes || '').toLowerCase().includes(q) ||
+          (r._displayCategory || '').toLowerCase().includes(q)
         );
       }
       return true;
     });
-  }, [rows, filterCategory, search]);
+  }, [allRows, filterCategory, search]);
 
-  const grouped = useMemo(() => {
-    const map = {};
-    filtered.forEach(r => {
-      const cat = r.category || 'Uncategorized';
-      if (!map[cat]) map[cat] = [];
-      map[cat].push(r);
-    });
-    return map;
-  }, [filtered]);
+  const summaryStats = useMemo(() => {
+    const total = allRows.length;
+    const native = allRows.filter(r => r._source === 'native').length;
+    const qc = allRows.filter(r => r._source === 'qc').length;
+    const catCount = new Set(allRows.map(r => r._displayCategory)).size;
+    return { total, native, qc, catCount };
+  }, [allRows]);
 
   function openAdd() {
-    setEditItem({ category: categories[0] || '', title: '', content: '', notes: '' });
+    setEditItem({
+      category: categories[0] || '',
+      title: '',
+      content: '',
+      notes: '',
+    });
     setModalOpen(true);
   }
 
   function openEdit(item) {
-    setEditItem({ ...item });
+    if (item._source === 'qc') return; // QC items are read-only
+    setEditItem({
+      id: item.id,
+      category: item.category || '',
+      title: item.title || '',
+      content: item.content || '',
+      notes: item.notes || '',
+    });
     setModalOpen(true);
   }
 
@@ -113,7 +175,9 @@ export default function InfoSystem() {
   if (loading) {
     return (
       <div>
-        <div className="page-header"><h1>Information System</h1></div>
+        <div className="page-header">
+          <h1>Information System</h1>
+        </div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <div className="spinner" />
           <p style={{ marginTop: '1rem', opacity: 0.7 }}>Loading...</p>
@@ -125,25 +189,56 @@ export default function InfoSystem() {
   return (
     <div>
       <div className="page-header">
-        <h1>Information System</h1>
-        <button className="btn btn-primary" onClick={openAdd}>+ Add Entry</button>
+        <div>
+          <h1>Information System</h1>
+          <p className="page-subtitle">Knowledge base and reference entries</p>
+        </div>
+        <div className="page-header-actions">
+          <button className="btn btn-outline btn-sm" onClick={loadData}>
+            Refresh
+          </button>
+          <button className="btn btn-primary" onClick={openAdd}>
+            + Add Entry
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="filter-bar">
-        <div className="form-group" style={{ minWidth: 180 }}>
+      {/* Summary Bar */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div className="glass-card" style={{ flex: 1, minWidth: 130, padding: '16px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--accent, #4f8cff)' }}>{summaryStats.total}</div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Total Entries</div>
+        </div>
+        <div className="glass-card" style={{ flex: 1, minWidth: 130, padding: '16px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#4caf50' }}>{summaryStats.native}</div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Native Entries</div>
+        </div>
+        <div className="glass-card" style={{ flex: 1, minWidth: 130, padding: '16px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#2196f3' }}>{summaryStats.qc}</div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>From Quick Capture</div>
+        </div>
+        <div className="glass-card" style={{ flex: 1, minWidth: 130, padding: '16px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#9c27b0' }}>{summaryStats.catCount}</div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Categories</div>
+        </div>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="filter-bar" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
+        <div className="form-group" style={{ minWidth: 180, margin: 0 }}>
           <select
             className="form-select"
             value={filterCategory}
             onChange={e => setFilterCategory(e.target.value)}
           >
             <option value="">All Categories</option>
+            <option value="__qc__">From Quick Capture</option>
             {categories.map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
         </div>
-        <div className="form-group" style={{ flex: 1, minWidth: 200 }}>
+        <div className="form-group" style={{ flex: 1, minWidth: 200, margin: 0 }}>
           <input
             className="form-input"
             type="text"
@@ -152,55 +247,167 @@ export default function InfoSystem() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <div style={{ opacity: 0.6, fontSize: '0.85rem', alignSelf: 'center' }}>
-          {filtered.length} of {rows.length} entries
+        <div style={{ opacity: 0.6, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+          {filtered.length} of {allRows.length} entries
         </div>
       </div>
 
-      {/* Grouped Cards */}
-      {Object.keys(grouped).length === 0 ? (
-        <div className="glass-card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <p style={{ opacity: 0.6 }}>No entries found.</p>
-        </div>
-      ) : (
-        Object.entries(grouped).map(([cat, items]) => (
-          <div key={cat} style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ marginBottom: '0.75rem', fontSize: '1rem', opacity: 0.8 }}>
-              <span className="badge badge-accent" style={{ marginRight: '0.5rem' }}>{items.length}</span>
-              {cat}
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
-              {items.map(item => (
-                <div className="glass-card" key={item.id} style={{ cursor: 'pointer' }} onClick={() => openEdit(item)}>
-                  <div className="glass-card-header" style={{ justifyContent: 'space-between', display: 'flex', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 600 }}>{item.title}</span>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={e => { e.stopPropagation(); setDeleteConfirm(item); }}
-                      title="Delete"
+      {/* Data Table */}
+      <div className="glass-card">
+        <div className="table-container" style={{ overflowX: 'auto' }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width: 45 }}>#</th>
+                <th style={{ width: 120 }}>Created</th>
+                <th>Description / Title</th>
+                <th style={{ width: 80 }}>Priority</th>
+                <th style={{ width: 130 }}>Category</th>
+                <th style={{ width: 180 }}>Notes</th>
+                <th style={{ width: 100 }}>Date Added</th>
+                <th style={{ width: 70 }}>Source</th>
+                <th style={{ width: 90 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: 32, opacity: 0.5 }}>
+                    No entries found.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((item, idx) => {
+                  const isQc = item._source === 'qc';
+                  return (
+                    <tr
+                      key={isQc ? `qc-${item._qcId || idx}` : `native-${item.id || idx}`}
+                      style={isQc ? { background: 'rgba(33, 150, 243, 0.04)' } : undefined}
                     >
-                      Delete
-                    </button>
-                  </div>
-                  <div style={{ padding: '1rem 1.25rem' }}>
-                    <p style={{ fontSize: '0.875rem', opacity: 0.8, marginBottom: '0.5rem', whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'hidden' }}>
-                      {item.content || 'No content'}
-                    </p>
-                    {item.notes && (
-                      <p style={{ fontSize: '0.8rem', opacity: 0.5, fontStyle: 'italic' }}>
-                        Notes: {item.notes}
-                      </p>
-                    )}
-                    <p style={{ fontSize: '0.75rem', opacity: 0.4, marginTop: '0.5rem' }}>
-                      Added: {item.dateAdded || '--'}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))
-      )}
+                      <td>{idx + 1}</td>
+                      <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                        {formatDate(item._displayDate)}
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{item._displayTitle}</div>
+                        {item.content && (
+                          <div
+                            style={{
+                              fontSize: 11,
+                              opacity: 0.6,
+                              marginTop: 2,
+                              maxWidth: 300,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={item.content}
+                          >
+                            {item.content}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        {item._displayPriority ? (
+                          <span
+                            className={`badge ${
+                              (item._displayPriority || '').toLowerCase() === 'high'
+                                ? 'badge-high'
+                                : (item._displayPriority || '').toLowerCase() === 'medium'
+                                ? 'badge-medium'
+                                : 'badge-low'
+                            }`}
+                          >
+                            {item._displayPriority}
+                          </span>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>-</span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: 12 }}>{item._displayCategory}</td>
+                      <td>
+                        {item._displayNotes ? (
+                          <div
+                            style={{
+                              fontSize: 11,
+                              opacity: 0.7,
+                              maxWidth: 180,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={item._displayNotes}
+                          >
+                            {item._displayNotes}
+                          </div>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>-</span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {formatDate(item.dateAdded || item._displayDate)}
+                      </td>
+                      <td>
+                        {isQc ? (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: '2px 8px',
+                              borderRadius: 10,
+                              fontWeight: 600,
+                              background: '#e3f2fd',
+                              color: '#1565c0',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            From QC
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: '2px 8px',
+                              borderRadius: 10,
+                              fontWeight: 600,
+                              background: '#e8f5e9',
+                              color: '#2e7d32',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Native
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {isQc ? (
+                          <span style={{ fontSize: 11, opacity: 0.4, fontStyle: 'italic' }}>Read-only</span>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => openEdit(item)}
+                              style={{ padding: '2px 8px', fontSize: 11 }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="btn btn-danger btn-sm"
+                              onClick={() => setDeleteConfirm(item)}
+                              style={{ padding: '2px 8px', fontSize: 11 }}
+                            >
+                              Del
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Add/Edit Modal */}
       {modalOpen && editItem && (
@@ -274,7 +481,7 @@ export default function InfoSystem() {
               <button className="modal-close" onClick={() => setDeleteConfirm(null)}>X</button>
             </div>
             <div className="modal-body">
-              <p>Are you sure you want to delete <strong>{deleteConfirm.title}</strong>?</p>
+              <p>Are you sure you want to delete <strong>{deleteConfirm.title || deleteConfirm._displayTitle}</strong>?</p>
               <p style={{ opacity: 0.6, fontSize: '0.85rem' }}>This action cannot be undone.</p>
             </div>
             <div className="modal-footer">
