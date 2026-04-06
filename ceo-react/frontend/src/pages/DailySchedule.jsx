@@ -27,6 +27,7 @@ export default function DailySchedule() {
   const [rating, setRating] = useState('');
   const [actuallyDone, setActuallyDone] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [markingDone, setMarkingDone] = useState({});
 
   const loadData = useCallback(async (targetDate) => {
     setLoading(true);
@@ -45,10 +46,14 @@ export default function DailySchedule() {
   function goNext() { setDate(prev => addDays(prev, 1)); }
 
   async function handleMarkDone(task, isDone) {
+    const key = `${task.source}-${task.rowNum}`;
+    setMarkingDone(prev => ({ ...prev, [key]: true }));
     try {
       const res = await api.markDone({ date, source: task.source, sourceRow: task.rowNum, done: isDone ? 'Yes' : 'No' });
       if (res.success) { showToast(isDone ? 'Task marked done' : 'Task unmarked', 'success'); loadData(date); }
+      else showToast('Failed to update task', 'error');
     } catch { showToast('Error updating task', 'error'); }
+    setMarkingDone(prev => ({ ...prev, [key]: false }));
   }
 
   async function handleRating(r) {
@@ -72,6 +77,9 @@ export default function DailySchedule() {
   const timeGrid = data?.timeGrid || [];
   const scheduled = data?.scheduled || [];
   const waiting = data?.waiting || [];
+
+  // Count tasks that are done
+  const doneCount = [...scheduled, ...waiting].filter(t => t.finalStatus === 'Completed').length;
 
   if (loading) {
     return (
@@ -98,7 +106,10 @@ export default function DailySchedule() {
         <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 13, color: 'var(--secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Time Grid</span>
-            <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500 }}>{scheduled.length} scheduled, {waiting.length} waiting</span>
+            <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500 }}>
+              {timeGrid.filter(s => s.task).length} tasks assigned
+              {doneCount > 0 && <span style={{ color: 'var(--success)', marginLeft: 6 }}>({doneCount} done)</span>}
+            </span>
           </div>
           <div style={{ overflowY: 'auto', maxHeight: '65vh' }}>
             <table className="data-table" style={{ marginBottom: 0 }}>
@@ -107,27 +118,49 @@ export default function DailySchedule() {
                   <th style={{ width: 90 }}>Time</th>
                   <th>Assigned Task</th>
                   <th style={{ width: 70 }}>Priority</th>
-                  <th style={{ width: 80 }}>Type</th>
+                  <th style={{ width: 80 }}>Source</th>
+                  <th style={{ width: 90 }}>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {timeGrid.map((slot, i) => {
+                {timeGrid.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: 32, opacity: 0.5 }}>
+                      No time slots for this date
+                    </td>
+                  </tr>
+                ) : timeGrid.map((slot, i) => {
                   const task = slot.task;
                   const hasTask = !!task;
+                  const isDone = task?.finalStatus === 'Completed';
                   const isHigh = task?.priority === 'High';
                   return (
                     <tr key={i} style={hasTask ? {
-                      background: isHigh ? 'var(--danger-bg)' : 'var(--success-bg)',
-                      borderLeft: `3px solid ${isHigh ? 'var(--danger)' : 'var(--success)'}`,
+                      background: isDone ? 'rgba(16, 185, 129, 0.06)' : isHigh ? 'var(--danger-bg)' : 'var(--success-bg)',
+                      borderLeft: `3px solid ${isDone ? '#10b981' : isHigh ? 'var(--danger)' : 'var(--success)'}`,
                     } : {}}>
                       <td style={{ fontWeight: 600, fontSize: 12, color: hasTask ? 'var(--primary)' : 'var(--muted)', whiteSpace: 'nowrap' }}>
                         {slot.time}
                       </td>
                       <td>
                         {hasTask ? (
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>{task.task}</div>
-                            {task.notes && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{task.notes}</div>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{
+                                fontWeight: 600, fontSize: 12, color: 'var(--text)',
+                                textDecoration: isDone ? 'line-through' : 'none',
+                                opacity: isDone ? 0.6 : 1,
+                              }}>
+                                {task.task}
+                              </div>
+                              {task.notes && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{task.notes}</div>}
+                            </div>
+                            {isDone && (
+                              <span style={{
+                                fontSize: 9, fontWeight: 700, color: '#fff', background: '#10b981',
+                                padding: '2px 8px', borderRadius: 8, whiteSpace: 'nowrap',
+                              }}>Done</span>
+                            )}
                           </div>
                         ) : (
                           <span style={{ opacity: 0.2, fontSize: 11 }}>&mdash;</span>
@@ -139,8 +172,32 @@ export default function DailySchedule() {
                         )}
                       </td>
                       <td>
-                        {hasTask && task.batchType && (
-                          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{task.batchType}</span>
+                        {hasTask && (
+                          <span style={{
+                            fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600,
+                            background: task.source === 'QC' ? '#e3f2fd' : task.source === 'RT' ? '#fff8e1' : '#f3e8ff',
+                            color: task.source === 'QC' ? '#1565c0' : task.source === 'RT' ? '#f57f17' : '#7c3aed',
+                          }}>
+                            {task.source || task.sendTo || '-'}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {hasTask && (
+                          <button
+                            style={{
+                              fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 8, border: 'none',
+                              cursor: markingDone[`${task.source}-${task.rowNum}`] ? 'wait' : 'pointer',
+                              background: isDone ? '#10b981' : '#f0f0f0',
+                              color: isDone ? '#fff' : 'var(--text-secondary)',
+                              transition: 'all 0.2s',
+                            }}
+                            disabled={markingDone[`${task.source}-${task.rowNum}`]}
+                            onClick={() => handleMarkDone(task, !isDone)}
+                            title={isDone ? 'Click to unmark' : 'Click to mark done'}
+                          >
+                            {markingDone[`${task.source}-${task.rowNum}`] ? '...' : isDone ? 'Done' : 'Mark Done'}
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -157,13 +214,18 @@ export default function DailySchedule() {
           <div className="glass-card" style={{ padding: '18px 20px' }}>
             <div style={{ display: 'flex', gap: 24, justifyContent: 'center' }}>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--info)' }}>{data?.totalScheduled ?? 0}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--info)' }}>{data?.totalScheduled ?? scheduled.length}</div>
                 <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Scheduled</div>
               </div>
               <div style={{ width: 1, background: 'var(--border)' }} />
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--warning)' }}>{data?.totalWaiting ?? 0}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--warning)' }}>{data?.totalWaiting ?? waiting.length}</div>
                 <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Waiting</div>
+              </div>
+              <div style={{ width: 1, background: 'var(--border)' }} />
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: '#10b981' }}>{doneCount}</div>
+                <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Done</div>
               </div>
             </div>
           </div>
@@ -171,42 +233,96 @@ export default function DailySchedule() {
           {/* Scheduled Tasks */}
           <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
             <div className="task-panel-header scheduled">Scheduled Tasks ({scheduled.length})</div>
-            <div>
+            <div style={{ maxHeight: '30vh', overflowY: 'auto' }}>
               {scheduled.length === 0 ? (
                 <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>No scheduled tasks</div>
-              ) : scheduled.map((task, i) => (
-                <div key={i} className="task-item">
-                  <div className="task-num sched">{task.schNum || i + 1}</div>
-                  <div className="task-name">
-                    <div style={{ fontWeight: 600, fontSize: 12 }}>{task.task}</div>
-                    {task.schedTime && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{task.schedTime}</div>}
+              ) : scheduled.map((task, i) => {
+                const isDone = task.finalStatus === 'Completed';
+                const key = `${task.source}-${task.rowNum}`;
+                return (
+                  <div key={i} className="task-item" style={{ opacity: isDone ? 0.65 : 1 }}>
+                    <div className="task-num sched">{task.schNum || i + 1}</div>
+                    <div className="task-name" style={{ flex: 1 }}>
+                      <div style={{
+                        fontWeight: 600, fontSize: 12,
+                        textDecoration: isDone ? 'line-through' : 'none',
+                      }}>
+                        {task.task}
+                      </div>
+                      {task.schedTime && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{task.schedTime}</div>}
+                      {task.source && (
+                        <span style={{
+                          fontSize: 9, padding: '1px 6px', borderRadius: 8, fontWeight: 600, marginTop: 2, display: 'inline-block',
+                          background: task.source === 'QC' ? '#e3f2fd' : '#fff8e1',
+                          color: task.source === 'QC' ? '#1565c0' : '#f57f17',
+                        }}>{task.source}</span>
+                      )}
+                    </div>
+                    {isDone && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, color: '#fff', background: '#10b981',
+                        padding: '2px 8px', borderRadius: 8, marginRight: 6, whiteSpace: 'nowrap',
+                      }}>Done</span>
+                    )}
+                    <button
+                      className={`task-done-btn${isDone ? ' done' : ''}`}
+                      onClick={() => handleMarkDone(task, !isDone)}
+                      disabled={markingDone[key]}
+                      style={{ minWidth: 75, fontSize: 11 }}
+                    >
+                      {markingDone[key] ? '...' : isDone ? 'Undo' : 'Mark Done'}
+                    </button>
                   </div>
-                  <button
-                    className={`task-done-btn${task.finalStatus === 'Completed' ? ' done' : ''}`}
-                    onClick={() => handleMarkDone(task, task.finalStatus !== 'Completed')}
-                  >
-                    {task.finalStatus === 'Completed' ? 'Done' : 'Mark Done'}
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           {/* Waiting Tasks */}
           <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
             <div className="task-panel-header waiting">Waiting Tasks ({waiting.length})</div>
-            <div>
+            <div style={{ maxHeight: '25vh', overflowY: 'auto' }}>
               {waiting.length === 0 ? (
                 <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>No waiting tasks</div>
-              ) : waiting.map((task, i) => (
-                <div key={i} className="task-item">
-                  <div className="task-num wait">{task.waitNum || i + 1}</div>
-                  <div className="task-name">
-                    <div style={{ fontWeight: 600, fontSize: 12 }}>{task.task}</div>
-                    {task.notes && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{task.notes}</div>}
+              ) : waiting.map((task, i) => {
+                const isDone = task.finalStatus === 'Completed';
+                const key = `${task.source}-${task.rowNum}`;
+                return (
+                  <div key={i} className="task-item" style={{ opacity: isDone ? 0.65 : 1 }}>
+                    <div className="task-num wait">{task.waitNum || i + 1}</div>
+                    <div className="task-name" style={{ flex: 1 }}>
+                      <div style={{
+                        fontWeight: 600, fontSize: 12,
+                        textDecoration: isDone ? 'line-through' : 'none',
+                      }}>
+                        {task.task}
+                      </div>
+                      {task.notes && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{task.notes}</div>}
+                      {task.source && (
+                        <span style={{
+                          fontSize: 9, padding: '1px 6px', borderRadius: 8, fontWeight: 600, marginTop: 2, display: 'inline-block',
+                          background: task.source === 'QC' ? '#e3f2fd' : '#fff8e1',
+                          color: task.source === 'QC' ? '#1565c0' : '#f57f17',
+                        }}>{task.source}</span>
+                      )}
+                    </div>
+                    {isDone && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, color: '#fff', background: '#10b981',
+                        padding: '2px 8px', borderRadius: 8, marginRight: 6, whiteSpace: 'nowrap',
+                      }}>Done</span>
+                    )}
+                    <button
+                      className={`task-done-btn${isDone ? ' done' : ''}`}
+                      onClick={() => handleMarkDone(task, !isDone)}
+                      disabled={markingDone[key]}
+                      style={{ minWidth: 75, fontSize: 11 }}
+                    >
+                      {markingDone[key] ? '...' : isDone ? 'Undo' : 'Mark Done'}
+                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

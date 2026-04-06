@@ -23,19 +23,56 @@ router.get('/someday-list', async (req, res) => {
 router.get('/daily-schedule/:date', async (req, res) => {
   try {
     const dateStr = req.params.date;
-    const sl = await computeSomedayList();
-    const tasks = sl.tasks || [];
 
-    // Build time grid
+    // Get someday list tasks (QC Someday + RT)
+    const sl = await computeSomedayList();
+    const slTasks = sl.tasks || [];
+
+    // Also get ALL QC tasks for this date (including Information System sendTo)
+    const allQcResult = await query(
+      "SELECT * FROM QuickCapture WHERE SchedDate = @date ORDER BY ID ASC",
+      { date: dateStr }
+    );
+
+    // DS done flags for this date
+    const dsResult2 = await query(
+      "SELECT Source, SourceRow, Done FROM DailySchedule WHERE Date = @date AND Source != '_DAY'",
+      { date: dateStr }
+    );
+    const doneFlags = {};
+    dsResult2.recordset.forEach(r => { doneFlags[r.Source + '|' + r.SourceRow] = r.Done; });
+
+    // Build extra QC tasks not in Someday List (i.e. sendTo='Information System')
+    const slTaskIds = new Set(slTasks.filter(t => t.source === 'QC').map(t => t.rowNum));
+    const extraQcTasks = allQcResult.recordset
+      .filter(r => !slTaskIds.has(r.ID) && r.SchedTimeFrom)
+      .map(r => {
+        let finalStatus = r.SLStatus || 'Scheduled';
+        if (doneFlags['QC|' + r.ID] === 'Yes') finalStatus = 'Completed';
+        return {
+          seq: 0, source: 'QC', rowNum: r.ID, task: r.Task || '',
+          priority: r.Priority || '', batchType: r.BatchType || '',
+          baseStatus: r.SLStatus || 'Scheduled', finalStatus,
+          schedDate: r.SchedDate || '', schedTime: r.SchedTimeFrom || '',
+          timeKey: r.SchedDate + '|' + (r.SchedTimeFrom || ''),
+          sendTo: r.SendTo || '', notes: r.Notes || '', isDue: false,
+        };
+      });
+
+    // Merge all tasks
+    const allTasks = [...slTasks, ...extraQcTasks];
+
+    // Build time grid from ALL tasks
     const timeGrid = TIME_SLOTS.map(slot => {
       const slotKey = dateStr + '|' + slot;
-      const matchedTask = tasks.find(t => t.timeKey === slotKey) || null;
+      const matchedTask = allTasks.find(t => t.timeKey === slotKey) || null;
       return { time: slot, timeKey: slotKey, task: matchedTask };
     });
 
-    // Scheduled and waiting for this date
-    const scheduled = tasks.filter(t => t.schedDate === dateStr && (t.baseStatus === 'Scheduled' || t.finalStatus === 'Completed')).slice(0, 8);
-    const waiting = tasks.filter(t => t.schedDate === dateStr && t.baseStatus === 'Waiting').slice(0, 8);
+    // Scheduled: all tasks for this date with status Scheduled or Completed
+    const scheduled = allTasks.filter(t => t.schedDate === dateStr && (t.baseStatus === 'Scheduled' || t.finalStatus === 'Completed'));
+    // Waiting: tasks with status Waiting
+    const waiting = allTasks.filter(t => t.schedDate === dateStr && t.baseStatus === 'Waiting');
 
     // Day rating
     const dsResult = await query(

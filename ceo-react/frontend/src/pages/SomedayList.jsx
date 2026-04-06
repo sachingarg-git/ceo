@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../api';
 import { useApp } from '../App';
 
@@ -52,6 +52,29 @@ function formatDateTime(val) {
   }
 }
 
+/**
+ * Extract just the time portion from a timeKey like "2026-04-07|7:00 AM"
+ * or return schedTimeTo if available, otherwise return the raw value.
+ */
+function formatTimeTo(task) {
+  // Prefer schedTimeTo if it exists and is a plain time string
+  if (task.schedTimeTo) {
+    // If schedTimeTo itself contains a pipe (date|time), extract time part
+    if (typeof task.schedTimeTo === 'string' && task.schedTimeTo.includes('|')) {
+      return task.schedTimeTo.split('|')[1]?.trim() || task.schedTimeTo;
+    }
+    return task.schedTimeTo;
+  }
+  // Fall back to timeKey, extracting time after pipe
+  if (task.timeKey) {
+    if (typeof task.timeKey === 'string' && task.timeKey.includes('|')) {
+      return task.timeKey.split('|')[1]?.trim() || task.timeKey;
+    }
+    return task.timeKey;
+  }
+  return '-';
+}
+
 /** Build a set of "date|timeSlot" keys from QC tasks for conflict detection */
 function buildQcSlotMap(qcTasks) {
   const map = {};
@@ -89,12 +112,9 @@ export default function SomedayList() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [markingDone, setMarkingDone] = useState({});
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [slRes, qcRes] = await Promise.all([
@@ -114,6 +134,34 @@ export default function SomedayList() {
     } finally {
       setLoading(false);
     }
+  }, [showToast]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  async function handleMarkDone(task) {
+    const isDone = task.finalStatus === 'Completed';
+    const key = `${task.source}-${task.rowNum}`;
+    setMarkingDone(prev => ({ ...prev, [key]: true }));
+    try {
+      const schedDate = task.schedDate ? (typeof task.schedDate === 'string' ? task.schedDate.split('T')[0] : task.schedDate) : '';
+      const res = await api.markDone({
+        date: schedDate,
+        source: task.source,
+        sourceRow: task.rowNum,
+        done: isDone ? 'No' : 'Yes',
+      });
+      if (res.success) {
+        showToast(isDone ? 'Task unmarked' : 'Task marked done', 'success');
+        loadData();
+      } else {
+        showToast('Failed to update task', 'error');
+      }
+    } catch {
+      showToast('Error updating task', 'error');
+    }
+    setMarkingDone(prev => ({ ...prev, [key]: false }));
   }
 
   const qcSlotMap = useMemo(() => buildQcSlotMap(qcTasks), [qcTasks]);
@@ -237,12 +285,13 @@ export default function SomedayList() {
                 <th style={{ width: 90 }}>Frequency</th>
                 <th style={{ width: 110 }}>Next Occurrence</th>
                 <th style={{ width: 140 }}>Notes</th>
+                <th style={{ width: 90 }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {filteredTasks.length === 0 ? (
                 <tr>
-                  <td colSpan={15} style={{ textAlign: 'center', padding: 32, opacity: 0.5 }}>
+                  <td colSpan={16} style={{ textAlign: 'center', padding: 32, opacity: 0.5 }}>
                     No tasks match the current filter
                   </td>
                 </tr>
@@ -250,14 +299,19 @@ export default function SomedayList() {
                 filteredTasks.map((task, idx) => {
                   const isRecurring = task.source === 'RT';
                   const isDue = task.isDue;
+                  const isDone = task.finalStatus === 'Completed';
                   const conflict = hasConflict(task, qcSlotMap);
                   const conflictInfo = conflict ? getConflictInfo(task, qcSlotMap) : null;
+                  const doneKey = `${task.source}-${task.rowNum}`;
 
                   const rowStyle = {};
-                  if (isRecurring) {
+                  if (isDone) {
+                    rowStyle.background = 'rgba(16, 185, 129, 0.06)';
+                    rowStyle.opacity = 0.7;
+                  } else if (isRecurring) {
                     rowStyle.background = 'rgba(255, 235, 59, 0.08)';
                   }
-                  if (isDue) {
+                  if (isDue && !isDone) {
                     rowStyle.background = 'rgba(255, 152, 0, 0.1)';
                   }
 
@@ -281,7 +335,7 @@ export default function SomedayList() {
                         >
                           {task.source || '-'}
                         </span>
-                        {isDue && (
+                        {isDue && !isDone && (
                           <span
                             style={{
                               display: 'inline-block',
@@ -322,7 +376,19 @@ export default function SomedayList() {
                         {task.createdDate ? formatDateTime(task.createdDate) : formatDate(task.schedDate) || '-'}
                       </td>
                       <td>
-                        <div style={{ fontWeight: 500 }}>{task.task}</div>
+                        <div style={{
+                          fontWeight: 500,
+                          textDecoration: isDone ? 'line-through' : 'none',
+                          color: isDone ? 'var(--muted)' : undefined,
+                        }}>
+                          {task.task}
+                        </div>
+                        {isDone && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, color: '#fff', background: '#10b981',
+                            padding: '1px 7px', borderRadius: 8, display: 'inline-block', marginTop: 2,
+                          }}>Done</span>
+                        )}
                       </td>
                       <td>
                         <span className={priorityBadgeClass(task.priority)}>
@@ -339,7 +405,7 @@ export default function SomedayList() {
                         </span>
                       </td>
                       <td style={{ fontSize: 12 }}>{task.schedTime || task.schedTimeFrom || '-'}</td>
-                      <td style={{ fontSize: 12 }}>{task.schedTimeTo || task.timeKey || '-'}</td>
+                      <td style={{ fontSize: 12 }}>{formatTimeTo(task)}</td>
                       <td style={{ fontSize: 12 }}>
                         {task.frequency ? (
                           <span style={{ fontStyle: 'italic' }}>{task.frequency}</span>
@@ -359,6 +425,23 @@ export default function SomedayList() {
                         ) : (
                           <span style={{ opacity: 0.4 }}>-</span>
                         )}
+                      </td>
+                      <td>
+                        <button
+                          style={{
+                            fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 8, border: 'none',
+                            cursor: markingDone[doneKey] ? 'wait' : 'pointer',
+                            background: isDone ? '#10b981' : '#f0f0f0',
+                            color: isDone ? '#fff' : 'var(--text-secondary)',
+                            transition: 'all 0.2s',
+                            whiteSpace: 'nowrap',
+                          }}
+                          disabled={markingDone[doneKey]}
+                          onClick={() => handleMarkDone(task)}
+                          title={isDone ? 'Click to unmark' : 'Click to mark done'}
+                        >
+                          {markingDone[doneKey] ? '...' : isDone ? 'Undo' : 'Mark Done'}
+                        </button>
                       </td>
                     </tr>
                   );
