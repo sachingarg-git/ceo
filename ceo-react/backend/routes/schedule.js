@@ -141,6 +141,16 @@ router.post('/mark-done', async (req, res) => {
         { date: dateStr, source: source || '', sourceRow: String(sourceRow || ''), done: doneVal, doneTime: timeStr }
       );
     }
+    // Also update the source table (QuickCapture or RecurringTasks) SLStatus
+    if (source === 'QC' && sourceRow) {
+      const newStatus = doneVal === 'Yes' ? 'Completed' : 'Scheduled';
+      const doneDate = doneVal === 'Yes' ? dateStr : '';
+      await query(
+        "UPDATE QuickCapture SET SLStatus = @status, DoneDate = @doneDate WHERE ID = @id",
+        { status: newStatus, doneDate, id: parseInt(sourceRow) }
+      );
+    }
+
     res.json({ success: true, message: 'Task marked as ' + doneVal });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
