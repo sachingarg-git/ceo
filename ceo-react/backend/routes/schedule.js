@@ -69,10 +69,22 @@ router.get('/daily-schedule/:date', async (req, res) => {
       return { time: slot, timeKey: slotKey, task: matchedTask };
     });
 
-    // Scheduled: all tasks for this date with status Scheduled or Completed
+    // Scheduled: tasks for this date with status Scheduled or Completed
     const scheduled = allTasks.filter(t => t.schedDate === dateStr && (t.baseStatus === 'Scheduled' || t.finalStatus === 'Completed'));
-    // Waiting: tasks with status Waiting
-    const waiting = allTasks.filter(t => t.schedDate === dateStr && t.baseStatus === 'Waiting');
+    // Waiting: tasks with status Waiting for this date OR with no schedDate (always show)
+    const waitingForDate = allTasks.filter(t => t.schedDate === dateStr && t.baseStatus === 'Waiting');
+    // Also get unscheduled waiting tasks (no date set - show on every day)
+    const unschedWaitResult = await query(
+      "SELECT * FROM QuickCapture WHERE SLStatus = 'Waiting' AND (SchedDate IS NULL OR SchedDate = '') ORDER BY ID ASC"
+    );
+    const unschedWaiting = unschedWaitResult.recordset.map(r => ({
+      seq: 0, source: 'QC', rowNum: r.ID, task: r.Task || '',
+      priority: r.Priority || '', batchType: r.BatchType || '',
+      baseStatus: 'Waiting', finalStatus: 'Waiting',
+      schedDate: '', schedTime: '', timeKey: '',
+      sendTo: r.SendTo || '', notes: r.Notes || '', isDue: false,
+    }));
+    const waiting = [...waitingForDate, ...unschedWaiting];
 
     // Day rating
     const dsResult = await query(
