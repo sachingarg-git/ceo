@@ -131,10 +131,10 @@ export default function Dashboard() {
                 opacity: animate ? 1 : 0,
                 transition: `all 0.4s cubic-bezier(0.4,0,0.2,1) ${si * 0.1 + ci * 0.06}s`,
               }}>
-                <div style={{ position: 'absolute', top: -8, right: -8, fontSize: 48, opacity: 0.08 }}>{card.icon}</div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: card.color, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{card.label}</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: card.color, lineHeight: 1 }}>{card.value}</div>
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: card.color, opacity: 0.3, borderRadius: '0 0 14px 14px' }} />
+                <div style={{ position: 'absolute', top: -8, right: -8, fontSize: 48, opacity: 0.1 }}>{card.icon}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{card.label}</div>
+                <div style={{ fontSize: 30, fontWeight: 900, color: 'var(--text)', lineHeight: 1 }}>{card.value}</div>
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4, background: card.color, opacity: 0.6, borderRadius: '0 0 14px 14px' }} />
               </div>
             ))}
           </div>
