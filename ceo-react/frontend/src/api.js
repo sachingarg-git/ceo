@@ -63,4 +63,13 @@ export const api = {
   createRole: (data) => request('/auth/roles', { method: 'POST', body: JSON.stringify(data) }),
   updateRole: (id, data) => request(`/auth/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteRole: (id) => request(`/auth/roles/${id}`, { method: 'DELETE' }),
+
+  // Companies
+  verifyGST: (gstin) => request('/companies/verify-gst', { method: 'POST', body: JSON.stringify({ gstin }) }),
+  companySignup: (data) => request('/companies/signup', { method: 'POST', body: JSON.stringify(data) }),
+  companyLogin: (username, password) => request('/companies/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  getCompanies: () => request('/companies'),
+  approveCompany: (id) => request(`/companies/${id}/approve`, { method: 'PUT' }),
+  rejectCompany: (id) => request(`/companies/${id}/reject`, { method: 'PUT' }),
+  deleteCompany: (id) => request(`/companies/${id}`, { method: 'DELETE' }),
 };

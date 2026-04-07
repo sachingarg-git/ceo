@@ -10,6 +10,7 @@ const infoSystemRouter = require('./routes/infoSystem');
 const dashboardRouter = require('./routes/dashboard');
 const mastersRouter = require('./routes/masters');
 const usersRouter = require('./routes/users');
+const companiesRouter = require('./routes/companies');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -26,6 +27,7 @@ app.use('/api/info-system', infoSystemRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/masters', mastersRouter);
 app.use('/api/auth', usersRouter);
+app.use('/api/companies', companiesRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -220,6 +220,37 @@ async function initDatabase() {
     console.log('Default users seeded.');
   }
 
+  // Companies table (for multi-company sign-up)
+  await p.request().query(`
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Companies' AND xtype='U')
+    CREATE TABLE Companies (
+      ID INT IDENTITY(1,1) PRIMARY KEY,
+      GSTIN NVARCHAR(20) NOT NULL UNIQUE,
+      LegalName NVARCHAR(300),
+      TradeName NVARCHAR(300),
+      BusinessType NVARCHAR(100),
+      RegistrationDate NVARCHAR(20),
+      GSTStatus NVARCHAR(30),
+      StateJurisdiction NVARCHAR(300),
+      CentralJurisdiction NVARCHAR(300),
+      Address NVARCHAR(500),
+      Pincode NVARCHAR(10),
+      ContactName NVARCHAR(100),
+      ContactMobile NVARCHAR(20),
+      ContactEmail NVARCHAR(100),
+      RegisteredMobile NVARCHAR(20),
+      Username NVARCHAR(50) UNIQUE,
+      Password NVARCHAR(100),
+      ApprovalStatus NVARCHAR(20) DEFAULT 'Pending',
+      ApprovedBy INT,
+      ApprovedAt DATETIME,
+      GSTRawResponse NVARCHAR(MAX),
+      CreatedAt DATETIME DEFAULT GETDATE(),
+      LastLogin DATETIME
+    )
+  `);
+  console.log('Companies table ready.');
+
   // Seed Masters data if empty
   const mastersCheck = await p.request().query('SELECT COUNT(*) as cnt FROM Masters');
   if (mastersCheck.recordset[0].cnt === 0) {

@@ -1,54 +1,34 @@
 import React, { useState, useRef } from 'react';
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, loading, onSignUp }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [lampOn, setLampOn] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [dragY, setDragY] = useState(0);
   const startYRef = useRef(0);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    if (!onLogin(username, password)) {
-      setError('Invalid credentials. Please try again.');
+    setSubmitting(true);
+    const result = await onLogin(username, password);
+    setSubmitting(false);
+    if (!result?.success) {
+      setError(result?.error || 'Invalid credentials. Please try again.');
     }
   }
 
-  function toggleLamp() {
-    setLampOn(v => !v);
-  }
-
-  function onPointerDown(e) {
-    e.stopPropagation();
-    setDragging(true);
-    startYRef.current = e.clientY;
-    setDragY(0);
-  }
-
-  function onPointerMove(e) {
-    if (!dragging) return;
-    const dy = Math.max(0, Math.min(60, e.clientY - startYRef.current));
-    setDragY(dy);
-  }
-
-  function onPointerUp(e) {
-    if (!dragging) return;
-    if (dragY > 30) toggleLamp();
-    setDragging(false);
-    setDragY(0);
-  }
-
-  function handleCordClick(e) {
-    e.stopPropagation();
-    toggleLamp();
-  }
+  function toggleLamp() { setLampOn(v => !v); }
+  function onPointerDown(e) { e.stopPropagation(); setDragging(true); startYRef.current = e.clientY; setDragY(0); }
+  function onPointerMove(e) { if (!dragging) return; setDragY(Math.max(0, Math.min(60, e.clientY - startYRef.current))); }
+  function onPointerUp() { if (!dragging) return; if (dragY > 30) toggleLamp(); setDragging(false); setDragY(0); }
+  function handleCordClick(e) { e.stopPropagation(); toggleLamp(); }
 
   return (
     <div className="anime-login-bg" data-on={lampOn}>
-      {/* Hint text when lamp is off */}
       {!lampOn && (
         <div style={{
           position: 'absolute', top: 40, left: '50%', transform: 'translateX(-50%)',
@@ -69,21 +49,15 @@ export default function Login({ onLogin }) {
             <g className="pull-cord">
               <line className="cord-line" x1="130" y1="110" x2="130" y2={180 + dragY} stroke="#444" strokeWidth="2" />
               <circle className="cord-bead" cx="130" cy={190 + dragY} r="6" />
-              <circle
-                cx="130" cy={190 + dragY} r="25" fill="transparent"
-                style={{ cursor: 'pointer' }}
-                onPointerDown={onPointerDown}
-                onPointerMove={onPointerMove}
-                onPointerUp={onPointerUp}
-                onPointerLeave={onPointerUp}
-                onClick={handleCordClick}
-              />
+              <circle cx="130" cy={190 + dragY} r="25" fill="transparent" style={{ cursor: 'pointer' }}
+                onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+                onPointerLeave={onPointerUp} onClick={handleCordClick} />
             </g>
             <path className="lamp-shade" d="M30 110 C 30 50, 170 50, 170 110 C 170 125, 30 125, 30 110 Z" />
           </svg>
         </div>
 
-        {/* Login Form - only visible when lamp is ON */}
+        {/* Login Form */}
         <div className="anime-login-form" style={{
           opacity: lampOn ? 1 : 0,
           transform: lampOn ? 'translateY(0)' : 'translateY(30px)',
@@ -105,11 +79,30 @@ export default function Login({ onLogin }) {
               <label>Security Key</label>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
             </div>
-            <button className="anime-login-btn" type="submit">Initialize</button>
+            <button className="anime-login-btn" type="submit" disabled={submitting}>
+              {submitting ? 'Authenticating...' : 'Initialize'}
+            </button>
             {error && (
               <div style={{ color: '#ff4d4d', fontSize: 12, marginTop: 12, textAlign: 'center', textShadow: '0 0 10px rgba(255,77,77,0.3)' }}>{error}</div>
             )}
           </form>
+
+          {/* Sign Up Link */}
+          {onSignUp && (
+            <div style={{ textAlign: 'center', marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(0,210,255,0.15)' }}>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>New company?</div>
+              <button onClick={onSignUp} style={{
+                background: 'transparent', border: '1px solid rgba(0,210,255,0.3)', borderRadius: 10,
+                color: '#00d2ff', fontSize: 12, fontWeight: 600, padding: '8px 24px', cursor: 'pointer',
+                transition: '0.3s', letterSpacing: 1,
+              }}
+                onMouseOver={e => { e.target.style.background = 'rgba(0,210,255,0.1)'; e.target.style.borderColor = '#00d2ff'; }}
+                onMouseOut={e => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'rgba(0,210,255,0.3)'; }}
+              >
+                SIGN UP WITH GST
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

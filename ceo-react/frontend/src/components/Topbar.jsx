@@ -13,6 +13,7 @@ const PAGE_TITLES = {
   'next-week-plan': 'Week Plan',
   settings: 'Settings',
   'performance-analytics': 'Performance Analytics',
+  'registered-companies': 'Registered Companies',
 };
 
 export default function Topbar({ onToggleSidebar }) {

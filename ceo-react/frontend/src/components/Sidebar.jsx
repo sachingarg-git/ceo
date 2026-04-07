@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { id: 'next-week-plan', icon: '\uD83D\uDCC5', label: 'Week Plan' },
   { id: 'performance-analytics', icon: '\uD83D\uDCC8', label: 'Performance Analytics' },
   { id: '_divider2' },
+  { id: 'registered-companies', icon: '\uD83C\uDFE2', label: 'Registered Companies' },
   { id: 'settings', icon: '\u2699', label: 'Settings' },
 ];
 

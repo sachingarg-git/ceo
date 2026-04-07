@@ -14,6 +14,7 @@ import WeeklyScorecard from '../pages/WeeklyScorecard';
 import NextWeekPlan from '../pages/NextWeekPlan';
 import PerformanceAnalytics from '../pages/PerformanceAnalytics';
 import Settings from '../pages/Settings';
+import RegisteredCompanies from '../pages/RegisteredCompanies';
 
 const PAGES = {
   dashboard: Dashboard,
@@ -27,6 +28,7 @@ const PAGES = {
   'next-week-plan': NextWeekPlan,
   'performance-analytics': PerformanceAnalytics,
   settings: Settings,
+  'registered-companies': RegisteredCompanies,
 };
 
 function AccessDenied() {
