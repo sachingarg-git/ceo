@@ -176,8 +176,27 @@ router.post('/login', async (req, res) => {
 // GET /api/companies - List all companies (admin only)
 router.get('/', async (req, res) => {
   try {
-    const result = await query('SELECT ID, GSTIN, LegalName, TradeName, BusinessType, GSTStatus, Address, Pincode, RegisteredMobile, Username, ApprovalStatus, CreatedAt, LastLogin FROM Companies ORDER BY CreatedAt DESC');
-    res.json({ success: true, companies: result.recordset });
+    const result = await query('SELECT * FROM Companies ORDER BY CreatedAt DESC');
+    const companies = result.recordset.map(c => ({
+      id: c.ID,
+      gstin: c.GSTIN || '',
+      legalName: c.LegalName || '',
+      tradeName: c.TradeName || '',
+      businessType: c.BusinessType || '',
+      gstStatus: c.GSTStatus || '',
+      address: c.Address || '',
+      pincode: c.Pincode || '',
+      registeredMobile: c.RegisteredMobile || '',
+      contactName: c.ContactName || '',
+      contactEmail: c.ContactEmail || '',
+      username: c.Username || '',
+      approvalStatus: (c.ApprovalStatus || 'Pending').toLowerCase(),
+      createdAt: c.CreatedAt,
+      lastLogin: c.LastLogin,
+      stateJurisdiction: c.StateJurisdiction || '',
+      centralJurisdiction: c.CentralJurisdiction || '',
+    }));
+    res.json({ success: true, companies });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
