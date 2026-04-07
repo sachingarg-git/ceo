@@ -31,7 +31,8 @@ const ALL_PAGES = [
 ];
 
 export default function Settings() {
-  const { showToast, hasPermission } = useApp();
+  const { showToast, hasPermission, user: currentUser } = useApp();
+  const isCompany = currentUser?.type === 'company';
   const [activeTab, setActiveTab] = useState('users');
   const [masters, setMasters] = useState({});
   const [loading, setLoading] = useState(true);
@@ -40,8 +41,9 @@ export default function Settings() {
   const [editType, setEditType] = useState(null);
   const [editValues, setEditValues] = useState('');
 
-  // Users
+  // Users (admin or company sub-users)
   const [users, setUsers] = useState([]);
+  const [userLimit, setUserLimit] = useState(null);
   const [roles, setRoles] = useState([]);
   const [userModal, setUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -57,11 +59,15 @@ export default function Settings() {
   async function loadAll() {
     setLoading(true);
     try {
+      const usersPromise = isCompany ? api.getCompanyUsers() : api.getUsers();
       const [mastersRes, usersRes, rolesRes] = await Promise.all([
-        api.getMasters(), api.getUsers(), api.getRoles(),
+        api.getMasters(), usersPromise, api.getRoles(),
       ]);
       if (mastersRes.success) setMasters(mastersRes.masters || {});
-      if (usersRes.success) setUsers(usersRes.users || []);
+      if (usersRes.success) {
+        setUsers(usersRes.users || []);
+        if (usersRes.limit) setUserLimit(usersRes.limit);
+      }
       if (rolesRes.success) setRoles(rolesRes.roles || []);
     } catch {}
     setLoading(false);
@@ -80,13 +86,17 @@ export default function Settings() {
 
   // Users CRUD
   function openAddUser() {
+    if (isCompany && userLimit && users.length >= userLimit) {
+      showToast(`Maximum ${userLimit} users per company`, 'warning');
+      return;
+    }
     setEditingUser(null);
-    setUserForm({ username: '', password: '', fullName: '', email: '', roleId: roles[0]?.id || '' });
+    setUserForm({ username: '', password: '', fullName: '', email: '', roleId: roles[0]?.id || '', role: 'User' });
     setUserModal(true);
   }
   function openEditUser(u) {
     setEditingUser(u.id);
-    setUserForm({ username: u.username, password: '', fullName: u.fullName, email: u.email, roleId: u.roleId || '' });
+    setUserForm({ username: u.username, password: '', fullName: u.fullName, email: u.email || '', roleId: u.roleId || '', role: u.role || 'User' });
     setUserModal(true);
   }
   async function saveUser() {
@@ -95,24 +105,38 @@ export default function Settings() {
     try {
       const data = { ...userForm };
       if (!data.password) delete data.password;
-      const res = editingUser
-        ? await api.updateUser(editingUser, data)
-        : await api.createUser(data);
+      let res;
+      if (isCompany) {
+        res = editingUser
+          ? await api.updateCompanyUser(editingUser, data)
+          : await api.createCompanyUser(data);
+      } else {
+        res = editingUser
+          ? await api.updateUser(editingUser, data)
+          : await api.createUser(data);
+      }
       if (res.success) { showToast(editingUser ? 'User updated' : 'User created', 'success'); setUserModal(false); loadAll(); }
       else showToast(res.error || 'Failed', 'error');
     } catch { showToast('Error saving user', 'error'); }
   }
   async function toggleUserActive(u) {
     try {
-      await api.updateUser(u.id, { isActive: !u.isActive });
+      if (isCompany) {
+        await api.updateCompanyUser(u.id, { isActive: !u.isActive });
+      } else {
+        await api.updateUser(u.id, { isActive: !u.isActive });
+      }
       showToast(`User ${u.isActive ? 'disabled' : 'enabled'}`, 'success');
       loadAll();
     } catch { showToast('Error', 'error'); }
   }
   async function deleteUser(id) {
     if (!confirm('Delete this user?')) return;
-    try { await api.deleteUser(id); showToast('User deleted', 'success'); loadAll(); }
-    catch { showToast('Error', 'error'); }
+    try {
+      if (isCompany) { await api.deleteCompanyUser(id); }
+      else { await api.deleteUser(id); }
+      showToast('User deleted', 'success'); loadAll();
+    } catch { showToast('Error', 'error'); }
   }
 
   // Roles CRUD
@@ -172,7 +196,6 @@ export default function Settings() {
           { id: 'masters', label: 'Masters' },
           { id: 'users', label: 'Users' },
           { id: 'roles', label: 'Roles & Permissions' },
-          { id: 'about', label: 'About' },
         ].map(tab => (
           <button key={tab.id} className={`tab-btn${activeTab === tab.id ? ' active' : ''}`} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>
         ))}
@@ -200,8 +223,16 @@ export default function Settings() {
       {activeTab === 'users' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700 }}>User Management</h3>
-            <button className="btn btn-primary btn-sm" onClick={openAddUser}>+ Add User</button>
+            <div>
+              <h3 style={{ fontSize: 14, fontWeight: 700 }}>User Management</h3>
+              {isCompany && userLimit && (
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                  {users.length} / {userLimit} users created
+                  {users.length >= userLimit && <span style={{ color: 'var(--danger)', marginLeft: 8 }}>(Limit reached)</span>}
+                </div>
+              )}
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={openAddUser} disabled={isCompany && userLimit && users.length >= userLimit}>+ Add User</button>
           </div>
           <div className="table-container">
             <table className="data-table">
@@ -269,19 +300,6 @@ export default function Settings() {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* About */}
-      {activeTab === 'about' && (
-        <div className="glass-card" style={{ maxWidth: 500, margin: '0 auto', textAlign: 'center', padding: 40 }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--primary)' }}>WIZONE</div>
-          <div style={{ fontSize: 10, color: 'var(--muted)', letterSpacing: 2, marginTop: 4 }}>CEO PRODUCTIVITY SYSTEM</div>
-          <div className="mt-16" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            <p>Version 2.0 - React + MSSQL</p>
-            <p className="mt-8">WIZONE IT NETWORK INDIA PVT LTD</p>
-            <p className="mt-8">Role-based access with {roles.length} roles and {users.length} users</p>
           </div>
         </div>
       )}

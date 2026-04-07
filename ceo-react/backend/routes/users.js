@@ -42,13 +42,17 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/users - list all users
+// GET /api/auth/users - list users for this company
 router.get('/users', async (req, res) => {
   try {
+    const companyId = req.companyId;
     const result = await query(
       `SELECT u.ID, u.Username, u.FullName, u.Email, u.IsActive, u.CreatedAt, u.LastLogin,
               r.RoleName, r.ID as RoleID
-       FROM Users u LEFT JOIN Roles r ON u.RoleID = r.ID ORDER BY u.ID ASC`
+       FROM Users u LEFT JOIN Roles r ON u.RoleID = r.ID
+       WHERE u.CompanyID = @companyId OR u.CompanyID IS NULL AND @companyId = 0
+       ORDER BY u.ID ASC`,
+      { companyId }
     );
     res.json({ success: true, users: result.recordset.map(u => ({
       id: u.ID, username: u.Username, fullName: u.FullName, email: u.Email || '',
@@ -70,9 +74,9 @@ router.post('/users', async (req, res) => {
     if (existing.recordset.length > 0) return res.json({ success: false, error: 'Username already exists' });
 
     const result = await query(
-      `INSERT INTO Users (Username, Password, FullName, Email, RoleID)
-       OUTPUT INSERTED.ID VALUES (@username, @password, @fullName, @email, @roleId)`,
-      { username, password, fullName: fullName || '', email: email || '', roleId: roleId || 1 }
+      `INSERT INTO Users (Username, Password, FullName, Email, RoleID, CompanyID)
+       OUTPUT INSERTED.ID VALUES (@username, @password, @fullName, @email, @roleId, @companyId)`,
+      { username, password, fullName: fullName || '', email: email || '', roleId: roleId || 1, companyId: req.companyId }
     );
     res.json({ success: true, id: result.recordset[0].ID, message: 'User created' });
   } catch (err) {
@@ -86,7 +90,7 @@ router.put('/users/:id', async (req, res) => {
     const id = parseInt(req.params.id);
     const b = req.body;
     const sets = [];
-    const params = { id };
+    const params = { id, companyId: req.companyId };
 
     if (b.fullName !== undefined) { sets.push('FullName = @fullName'); params.fullName = b.fullName; }
     if (b.email !== undefined) { sets.push('Email = @email'); params.email = b.email; }
@@ -95,7 +99,7 @@ router.put('/users/:id', async (req, res) => {
     if (b.password) { sets.push('Password = @password'); params.password = b.password; }
 
     if (sets.length > 0) {
-      await query(`UPDATE Users SET ${sets.join(', ')} WHERE ID = @id`, params);
+      await query(`UPDATE Users SET ${sets.join(', ')} WHERE ID = @id AND CompanyID = @companyId`, params);
     }
     res.json({ success: true, message: 'User updated' });
   } catch (err) {
@@ -107,17 +111,21 @@ router.put('/users/:id', async (req, res) => {
 router.delete('/users/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await query('DELETE FROM Users WHERE ID = @id', { id });
+    await query('DELETE FROM Users WHERE ID = @id AND CompanyID = @companyId', { id, companyId: req.companyId });
     res.json({ success: true, message: 'User deleted' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// GET /api/auth/roles - list all roles
+// GET /api/auth/roles - list roles for this company
 router.get('/roles', async (req, res) => {
   try {
-    const result = await query('SELECT * FROM Roles ORDER BY ID ASC');
+    const companyId = req.companyId;
+    const result = await query(
+      'SELECT * FROM Roles WHERE CompanyID = @companyId OR (CompanyID IS NULL AND @companyId = 0) ORDER BY ID ASC',
+      { companyId }
+    );
     res.json({ success: true, roles: result.recordset.map(r => {
       let permissions = [];
       try { permissions = JSON.parse(r.Permissions || '[]'); } catch {}
@@ -135,8 +143,8 @@ router.post('/roles', async (req, res) => {
     if (!name) return res.json({ success: false, error: 'Role name required' });
 
     const result = await query(
-      `INSERT INTO Roles (RoleName, Description, Permissions) OUTPUT INSERTED.ID VALUES (@name, @desc, @perms)`,
-      { name, desc: description || '', perms: JSON.stringify(permissions || []) }
+      `INSERT INTO Roles (RoleName, Description, Permissions, CompanyID) OUTPUT INSERTED.ID VALUES (@name, @desc, @perms, @companyId)`,
+      { name, desc: description || '', perms: JSON.stringify(permissions || []), companyId: req.companyId }
     );
     res.json({ success: true, id: result.recordset[0].ID, message: 'Role created' });
   } catch (err) {
@@ -150,14 +158,14 @@ router.put('/roles/:id', async (req, res) => {
     const id = parseInt(req.params.id);
     const b = req.body;
     const sets = [];
-    const params = { id };
+    const params = { id, companyId: req.companyId };
 
     if (b.name !== undefined) { sets.push('RoleName = @name'); params.name = b.name; }
     if (b.description !== undefined) { sets.push('Description = @desc'); params.desc = b.description; }
     if (b.permissions !== undefined) { sets.push('Permissions = @perms'); params.perms = JSON.stringify(b.permissions); }
 
     if (sets.length > 0) {
-      await query(`UPDATE Roles SET ${sets.join(', ')} WHERE ID = @id`, params);
+      await query(`UPDATE Roles SET ${sets.join(', ')} WHERE ID = @id AND CompanyID = @companyId`, params);
     }
     res.json({ success: true, message: 'Role updated' });
   } catch (err) {
@@ -169,7 +177,7 @@ router.put('/roles/:id', async (req, res) => {
 router.delete('/roles/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await query('DELETE FROM Roles WHERE ID = @id', { id });
+    await query('DELETE FROM Roles WHERE ID = @id AND CompanyID = @companyId', { id, companyId: req.companyId });
     res.json({ success: true, message: 'Role deleted' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

@@ -251,8 +251,26 @@ async function initDatabase() {
   `);
   console.log('Companies table ready.');
 
+  // CompanyUsers table (sub-users under a company, max 3 per company)
+  await p.request().query(`
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='CompanyUsers' AND xtype='U')
+    CREATE TABLE CompanyUsers (
+      ID INT IDENTITY(1,1) PRIMARY KEY,
+      CompanyID INT NOT NULL,
+      Username NVARCHAR(50) NOT NULL,
+      Password NVARCHAR(100) NOT NULL,
+      FullName NVARCHAR(100),
+      Email NVARCHAR(100),
+      Role NVARCHAR(50) DEFAULT 'User',
+      IsActive BIT DEFAULT 1,
+      CreatedAt DATETIME DEFAULT GETDATE(),
+      LastLogin DATETIME
+    )
+  `);
+  console.log('CompanyUsers table ready.');
+
   // Add CompanyID column to all data tables for multi-tenancy
-  const dataTables = ['QuickCapture', 'RecurringTasks', 'DailySchedule', 'DailyReport', 'WeeklyScorecard', 'InformationSystem'];
+  const dataTables = ['QuickCapture', 'RecurringTasks', 'DailySchedule', 'DailyReport', 'WeeklyScorecard', 'InformationSystem', 'Roles', 'Users'];
   for (const tbl of dataTables) {
     try {
       await p.request().query(`

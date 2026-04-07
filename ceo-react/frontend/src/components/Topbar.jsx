@@ -26,10 +26,6 @@ export default function Topbar({ onToggleSidebar }) {
         <h3 className="topbar-title">{PAGE_TITLES[currentPage] || currentPage}</h3>
       </div>
       <div className="topbar-right">
-        <div className="sync-indicator">
-          <div className="sync-dot online"></div>
-          <span>MSSQL</span>
-        </div>
         <div className="user-avatar-small">{user?.name?.charAt(0) || 'C'}</div>
       </div>
     </div>

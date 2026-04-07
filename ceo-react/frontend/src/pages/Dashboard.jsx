@@ -63,32 +63,32 @@ export default function Dashboard() {
 
   const kpiRows = [
     {
-      title: 'Quick Capture',
+      title: 'QUICK CAPTURE',
       cards: [
-        { label: 'Total Captures', value: qc.total || 0, icon: ICONS.capture, color: '#0D6E6E', bg: 'linear-gradient(135deg, #E0F2F2 0%, #B2DFDB 100%)' },
-        { label: 'To Someday List', value: qc.toSomeday || 0, icon: ICONS.someday, color: '#3B82F6', bg: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)' },
-        { label: 'To Info System', value: qc.toInfoSystem || 0, icon: ICONS.info, color: '#8B5CF6', bg: 'linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)' },
-        { label: 'High Priority', value: qc.highPriority || 0, icon: ICONS.high, color: '#EF4444', bg: 'linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%)' },
+        { label: 'Total Captures', value: qc.total || 0, icon: ICONS.capture, bg: 'linear-gradient(135deg, #0D9488 0%, #14B8A6 100%)' },
+        { label: 'To Someday List', value: qc.toSomeday || 0, icon: ICONS.someday, bg: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)' },
+        { label: 'To Info System', value: qc.toInfoSystem || 0, icon: ICONS.info, bg: 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)' },
+        { label: 'High Priority', value: qc.highPriority || 0, icon: ICONS.high, bg: 'linear-gradient(135deg, #E11D48 0%, #F43F5E 100%)' },
       ]
     },
     {
-      title: 'Someday List & Today',
+      title: 'SOMEDAY LIST & TODAY',
       cards: [
-        { label: 'Total SL Tasks', value: sl.total || 0, icon: ICONS.tasks, color: '#0D6E6E', bg: 'linear-gradient(135deg, #E0F2F2 0%, #B2DFDB 100%)' },
-        { label: 'Scheduled Today', value: sl.scheduledToday || 0, icon: ICONS.scheduled, color: '#3B82F6', bg: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)' },
-        { label: 'Waiting', value: sl.waiting || 0, icon: ICONS.waiting, color: '#F59E0B', bg: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)' },
-        { label: 'Completed Today', value: sl.completed || 0, icon: ICONS.completed, color: '#10B981', bg: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' },
-        { label: 'Overdue', value: sl.overdue || 0, icon: ICONS.overdue, color: '#EF4444', bg: 'linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%)' },
+        { label: 'Total SL Tasks', value: sl.total || 0, icon: ICONS.tasks, bg: 'linear-gradient(135deg, #0D9488 0%, #14B8A6 100%)' },
+        { label: 'Scheduled Today', value: sl.scheduledToday || 0, icon: ICONS.scheduled, bg: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)' },
+        { label: 'Waiting', value: sl.waiting || 0, icon: ICONS.waiting, bg: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)' },
+        { label: 'Completed Today', value: sl.completed || 0, icon: ICONS.completed, bg: 'linear-gradient(135deg, #059669 0%, #10B981 100%)' },
+        { label: 'Overdue', value: sl.overdue || 0, icon: ICONS.overdue, bg: 'linear-gradient(135deg, #E11D48 0%, #F43F5E 100%)' },
       ]
     },
     {
-      title: 'Recurring & Performance',
+      title: 'RECURRING & PERFORMANCE',
       cards: [
-        { label: 'Active Recurring', value: rt.active || 0, icon: ICONS.recurring, color: '#0D6E6E', bg: 'linear-gradient(135deg, #E0F2F2 0%, #B2DFDB 100%)' },
-        { label: 'Due Today', value: rt.dueToday || 0, icon: ICONS.dueToday, color: '#F59E0B', bg: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)' },
-        { label: 'Due Tomorrow', value: rt.dueTomorrow || 0, icon: ICONS.dueTomorrow, color: '#3B82F6', bg: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)' },
-        { label: '30-Day Completion', value: `${mr.avgCompletion || 0}%`, icon: ICONS.completion, color: '#10B981', bg: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' },
-        { label: 'Days Tracked', value: mr.daysTracked || 0, icon: ICONS.days, color: '#8B5CF6', bg: 'linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)' },
+        { label: 'Active Recurring', value: rt.active || 0, icon: ICONS.recurring, bg: 'linear-gradient(135deg, #0D9488 0%, #14B8A6 100%)' },
+        { label: 'Due Today', value: rt.dueToday || 0, icon: ICONS.dueToday, bg: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)' },
+        { label: 'Due Tomorrow', value: rt.dueTomorrow || 0, icon: ICONS.dueTomorrow, bg: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)' },
+        { label: '30-Day Completion', value: `${mr.avgCompletion || 0}%`, icon: ICONS.completion, bg: 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)' },
+        { label: 'Days Tracked', value: mr.daysTracked || 0, icon: ICONS.days, bg: 'linear-gradient(135deg, #E11D48 0%, #F43F5E 100%)' },
       ]
     },
   ];
@@ -97,10 +97,11 @@ export default function Dashboard() {
     <div>
       {/* Hero Header */}
       <div style={{
-        background: 'linear-gradient(135deg, #0D6E6E 0%, #14919B 50%, #0D6E6E 100%)',
-        borderRadius: 16, padding: '28px 32px', marginBottom: 24, color: 'white',
+        background: 'linear-gradient(135deg, #0D9488 0%, #2563EB 50%, #7C3AED 100%)',
+        borderRadius: 20, padding: '32px 36px', marginBottom: 28, color: 'white',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        boxShadow: '0 8px 32px rgba(13,110,110,0.25)',
+        boxShadow: '0 8px 32px rgba(13,110,110,0.2)',
+        position: 'relative', overflow: 'hidden',
         animation: animate ? 'fadeInDown 0.5s ease' : 'none',
       }}>
         <div>
@@ -121,20 +122,22 @@ export default function Dashboard() {
       {/* KPI Sections */}
       {kpiRows.map((section, si) => (
         <div key={si} style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10, paddingLeft: 4 }}>{section.title}</div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', letterSpacing: 1, marginBottom: 12, paddingLeft: 4, borderBottom: '2px solid var(--border)', paddingBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 4, height: 16, background: 'var(--primary-gradient)', borderRadius: 2 }} />
+            {section.title}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${section.cards.length}, 1fr)`, gap: 14 }}>
             {section.cards.map((card, ci) => (
               <div key={ci} style={{
-                background: card.bg, borderRadius: 14, padding: '18px 20px', position: 'relative', overflow: 'hidden',
-                border: `1px solid ${card.color}15`, cursor: 'default',
+                background: card.bg, borderRadius: 16, padding: '20px 22px', position: 'relative', overflow: 'hidden',
+                cursor: 'default', boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
                 transform: animate ? 'translateY(0)' : 'translateY(20px)',
                 opacity: animate ? 1 : 0,
                 transition: `all 0.4s cubic-bezier(0.4,0,0.2,1) ${si * 0.1 + ci * 0.06}s`,
               }}>
-                <div style={{ position: 'absolute', top: -8, right: -8, fontSize: 48, opacity: 0.1 }}>{card.icon}</div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{card.label}</div>
-                <div style={{ fontSize: 30, fontWeight: 900, color: 'var(--text)', lineHeight: 1 }}>{card.value}</div>
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4, background: card.color, opacity: 0.6, borderRadius: '0 0 14px 14px' }} />
+                <div style={{ position: 'absolute', top: -10, right: -10, fontSize: 56, opacity: 0.15 }}>{card.icon}</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>{card.label}</div>
+                <div style={{ fontSize: 32, fontWeight: 900, color: '#fff', lineHeight: 1 }}>{card.value}</div>
               </div>
             ))}
           </div>
@@ -142,71 +145,87 @@ export default function Dashboard() {
       ))}
 
       {/* Today Overview + Alerts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20, animation: animate ? 'fadeInUp 0.6s ease 0.3s both' : 'none' }}>
-        <div className="glass-card" style={{ padding: '20px 24px', borderLeft: '4px solid var(--info)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--secondary)' }}>Today's Schedule</h4>
-            <button className="btn btn-xs btn-outline" onClick={() => setCurrentPage('daily-schedule')}>View &rarr;</button>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24, animation: animate ? 'fadeInUp 0.6s ease 0.3s both' : 'none' }}>
+        <div className="glass-card" style={{
+          padding: '28px 28px', borderLeft: '5px solid var(--info)',
+          transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', cursor: 'pointer',
+        }}
+          onClick={() => setCurrentPage('daily-schedule')}
+          onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(59,130,246,0.15)'; }}
+          onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = ''; }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h4 style={{ fontSize: 18, fontWeight: 800, color: 'var(--secondary)', letterSpacing: -0.3 }}>Today's Schedule</h4>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--info)', background: 'var(--info-bg)', padding: '4px 12px', borderRadius: 20 }}>View &rarr;</span>
           </div>
           {todayTasks > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg, #3B82F6, #60A5FA)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: 'white', fontWeight: 800 }}>{todayTasks}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #3B82F6, #60A5FA)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, color: 'white', fontWeight: 900 }}>{todayTasks}</div>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{todayTasks} task{todayTasks > 1 ? 's' : ''} scheduled</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Click to view your daily schedule</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{todayTasks} task{todayTasks > 1 ? 's' : ''} scheduled</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Click to view your daily schedule</div>
               </div>
             </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: 16, color: 'var(--muted)' }}>
-              <div style={{ fontSize: 28, marginBottom: 8 }}>&#128203;</div>
-              <div style={{ fontSize: 12 }}>No tasks scheduled for today</div>
+            <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>&#128203;</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>No tasks scheduled for today</div>
             </div>
           )}
         </div>
 
-        <div className="glass-card" style={{ padding: '20px 24px', borderLeft: `4px solid ${sl.overdue > 0 ? 'var(--danger)' : 'var(--success)'}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--secondary)' }}>Alerts & Status</h4>
-            {sl.overdue > 0 && <span className="badge badge-overdue" style={{ animation: 'pulse 2s infinite' }}>{sl.overdue} Overdue</span>}
+        <div className="glass-card" style={{
+          padding: '28px 28px', borderLeft: `5px solid ${sl.overdue > 0 ? 'var(--danger)' : 'var(--success)'}`,
+          transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', cursor: 'default',
+        }}
+          onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = `0 12px 40px rgba(${sl.overdue > 0 ? '239,68,68' : '16,185,129'},0.12)`; }}
+          onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = ''; }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h4 style={{ fontSize: 18, fontWeight: 800, color: 'var(--secondary)', letterSpacing: -0.3 }}>Alerts & Status</h4>
+            {sl.overdue > 0 && <span className="badge badge-overdue" style={{ animation: 'pulse 2s infinite', fontSize: 11, padding: '4px 12px' }}>{sl.overdue} Overdue</span>}
           </div>
           {sl.overdue > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg, #EF4444, #F87171)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: 'white', fontWeight: 800 }}>{sl.overdue}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #EF4444, #F87171)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, color: 'white', fontWeight: 900 }}>{sl.overdue}</div>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--danger)' }}>{sl.overdue} overdue task{sl.overdue > 1 ? 's' : ''}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>These tasks need your immediate attention</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--danger)' }}>{sl.overdue} overdue task{sl.overdue > 1 ? 's' : ''}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>These tasks need your immediate attention</div>
               </div>
             </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: 16, color: 'var(--success)' }}>
-              <div style={{ fontSize: 28, marginBottom: 8 }}>&#9989;</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>All clear! No overdue tasks</div>
+            <div style={{ textAlign: 'center', padding: 20, color: 'var(--success)' }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>&#9989;</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--muted)' }}>All clear! No overdue tasks</div>
             </div>
           )}
         </div>
       </div>
 
       {/* Quick Actions */}
-      <div style={{ marginBottom: 20, animation: animate ? 'fadeInUp 0.6s ease 0.4s both' : 'none' }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10, paddingLeft: 4 }}>Quick Actions</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+      <div style={{ marginBottom: 24, animation: animate ? 'fadeInUp 0.6s ease 0.4s both' : 'none' }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', letterSpacing: 1, marginBottom: 14, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 4, height: 16, background: 'var(--primary-gradient)', borderRadius: 2 }} />
+          QUICK ACTIONS
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
           {[
-            { label: 'Quick Capture', icon: '\u26A1', page: 'quick-capture', color: '#0D6E6E' },
-            { label: 'Daily Schedule', icon: '\uD83D\uDCC5', page: 'daily-schedule', color: '#3B82F6' },
-            { label: 'Someday List', icon: '\uD83D\uDCCB', page: 'someday-list', color: '#F59E0B' },
-            { label: 'Recurring Tasks', icon: '\uD83D\uDD04', page: 'recurring-tasks', color: '#10B981' },
-            { label: 'Week Plan', icon: '\uD83D\uDCC6', page: 'next-week-plan', color: '#8B5CF6' },
+            { label: 'Quick Capture', icon: '\u26A1', page: 'quick-capture', color: '#0D9488', bg: 'linear-gradient(135deg, #F0FDFA, #CCFBF1)' },
+            { label: 'Daily Schedule', icon: '\uD83D\uDCC5', page: 'daily-schedule', color: '#2563EB', bg: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)' },
+            { label: 'Someday List', icon: '\uD83D\uDCCB', page: 'someday-list', color: '#D97706', bg: 'linear-gradient(135deg, #FFFBEB, #FEF3C7)' },
+            { label: 'Recurring Tasks', icon: '\uD83D\uDD04', page: 'recurring-tasks', color: '#059669', bg: 'linear-gradient(135deg, #ECFDF5, #D1FAE5)' },
+            { label: 'Week Plan', icon: '\uD83D\uDCC6', page: 'next-week-plan', color: '#7C3AED', bg: 'linear-gradient(135deg, #F5F3FF, #EDE9FE)' },
           ].map((action, i) => (
             <button key={i} onClick={() => setCurrentPage(action.page)} style={{
-              background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12,
-              padding: '16px 12px', cursor: 'pointer', textAlign: 'center',
-              transition: 'all 0.2s', boxShadow: 'var(--shadow)',
+              background: action.bg, border: `1.5px solid ${action.color}20`, borderRadius: 14,
+              padding: '22px 14px', cursor: 'pointer', textAlign: 'center',
+              transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
             }}
-              onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = 'var(--shadow-lg)'; }}
-              onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--shadow)'; }}
+              onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 12px 32px rgba(0,0,0,0.1)'; }}
+              onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'; }}
             >
-              <div style={{ fontSize: 24, marginBottom: 6 }}>{action.icon}</div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: action.color }}>{action.label}</div>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>{action.icon}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: action.color }}>{action.label}</div>
             </button>
           ))}
         </div>

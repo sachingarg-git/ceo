@@ -162,7 +162,7 @@ router.post('/login', async (req, res) => {
         id: c.ID,
         type: 'company',
         username: c.Username,
-        name: c.TradeName || c.LegalName,
+        name: (c.TradeName && c.TradeName !== 'NA' ? c.TradeName : c.LegalName) || c.Username,
         gstin: c.GSTIN,
         role: 'Company',
         permissions: ['dashboard', 'quick-capture', 'someday-list', 'daily-schedule', 'recurring-tasks', 'info-system', 'daily-report', 'weekly-scorecard', 'next-week-plan', 'performance-analytics', 'settings'],
@@ -249,6 +249,91 @@ router.delete('/:id', async (req, res) => {
     const id = parseInt(req.params.id);
     await query('DELETE FROM Companies WHERE ID = @id', { id });
     res.json({ success: true, message: 'Company deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============ COMPANY SUB-USERS (max 3 per company) ============
+
+// GET /api/companies/users/my - Get users for the logged-in company
+router.get('/users/my', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    if (!companyId) return res.json({ success: true, users: [], limit: 3 });
+    const result = await query('SELECT * FROM CompanyUsers WHERE CompanyID = @companyId ORDER BY ID ASC', { companyId });
+    const users = result.recordset.map(u => ({
+      id: u.ID, username: u.Username, fullName: u.FullName || '',
+      email: u.Email || '', role: u.Role || 'User', isActive: u.IsActive,
+      createdAt: u.CreatedAt, lastLogin: u.LastLogin,
+    }));
+    res.json({ success: true, users, limit: 3, remaining: Math.max(0, 3 - users.length) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/companies/users/my - Create company sub-user
+router.post('/users/my', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    if (!companyId) return res.json({ success: false, error: 'Company login required' });
+
+    // Check limit
+    const countRes = await query('SELECT COUNT(*) as cnt FROM CompanyUsers WHERE CompanyID = @companyId', { companyId });
+    if (countRes.recordset[0].cnt >= 3) {
+      return res.json({ success: false, error: 'Maximum 3 users per company. Please delete an existing user first.' });
+    }
+
+    const { username, password, fullName, email, role } = req.body;
+    if (!username || !password) return res.json({ success: false, error: 'Username and password required' });
+
+    // Check unique username within company
+    const existing = await query('SELECT ID FROM CompanyUsers WHERE CompanyID = @companyId AND Username = @username', { companyId, username });
+    if (existing.recordset.length > 0) return res.json({ success: false, error: 'Username already exists in your company' });
+
+    const result = await query(
+      `INSERT INTO CompanyUsers (CompanyID, Username, Password, FullName, Email, Role)
+       OUTPUT INSERTED.ID VALUES (@companyId, @username, @password, @fullName, @email, @role)`,
+      { companyId, username, password, fullName: fullName || '', email: email || '', role: role || 'User' }
+    );
+    res.json({ success: true, id: result.recordset[0].ID, message: 'User created' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/companies/users/my/:id - Update company sub-user
+router.put('/users/my/:id', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    const id = parseInt(req.params.id);
+    const b = req.body;
+    const sets = [];
+    const params = { id, companyId };
+
+    if (b.fullName !== undefined) { sets.push('FullName = @fullName'); params.fullName = b.fullName; }
+    if (b.email !== undefined) { sets.push('Email = @email'); params.email = b.email; }
+    if (b.role !== undefined) { sets.push('Role = @role'); params.role = b.role; }
+    if (b.isActive !== undefined) { sets.push('IsActive = @isActive'); params.isActive = b.isActive ? 1 : 0; }
+    if (b.password) { sets.push('Password = @password'); params.password = b.password; }
+
+    if (sets.length > 0) {
+      await query(`UPDATE CompanyUsers SET ${sets.join(', ')} WHERE ID = @id AND CompanyID = @companyId`, params);
+    }
+    res.json({ success: true, message: 'User updated' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/companies/users/my/:id - Delete company sub-user
+router.delete('/users/my/:id', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    const id = parseInt(req.params.id);
+    await query('DELETE FROM CompanyUsers WHERE ID = @id AND CompanyID = @companyId', { id, companyId });
+    res.json({ success: true, message: 'User deleted' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

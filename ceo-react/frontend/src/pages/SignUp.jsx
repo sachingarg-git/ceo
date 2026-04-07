@@ -88,7 +88,7 @@ export default function SignUp({ onBackToLogin }) {
             </div>
           </div>
         </div>
-        <div className="anime-footer">CEO Productivity System &mdash; <b>WIZONE</b></div>
+        <div className="anime-footer">EA to M.D &mdash; <b>WIZONE</b></div>
       </div>
     );
   }
@@ -264,7 +264,7 @@ export default function SignUp({ onBackToLogin }) {
         </div>
       </div>
 
-      <div className="anime-footer">CEO Productivity System &mdash; <b>WIZONE</b></div>
+      <div className="anime-footer">EA to M.D &mdash; <b>WIZONE</b></div>
 
       {/* Keyframe animations */}
       <style>{`

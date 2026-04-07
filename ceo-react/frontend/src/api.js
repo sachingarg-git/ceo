@@ -84,4 +84,10 @@ export const api = {
   rejectCompany: (id) => request(`/companies/${id}/reject`, { method: 'PUT' }),
   deleteCompany: (id) => request(`/companies/${id}`, { method: 'DELETE' }),
   updateCompanyPassword: (id, password) => request(`/companies/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) }),
+
+  // Company Sub-Users (max 3 per company)
+  getCompanyUsers: () => request('/companies/users/my'),
+  createCompanyUser: (data) => request('/companies/users/my', { method: 'POST', body: JSON.stringify(data) }),
+  updateCompanyUser: (id, data) => request(`/companies/users/my/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCompanyUser: (id) => request(`/companies/users/my/${id}`, { method: 'DELETE' }),
 };

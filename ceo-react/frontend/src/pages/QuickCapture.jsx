@@ -6,7 +6,8 @@ const TIME_SLOTS = [
   '7:00 AM','7:30 AM','8:00 AM','8:30 AM','9:00 AM','9:30 AM',
   '10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','12:30 PM',
   '1:00 PM','1:30 PM','2:00 PM','2:30 PM','3:00 PM','3:30 PM',
-  '4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM','6:30 PM','7:00 PM'
+  '4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM','6:30 PM','7:00 PM',
+  '7:30 PM','8:00 PM','8:30 PM','9:00 PM','9:30 PM','10:00 PM','10:30 PM','11:00 PM','11:30 PM'
 ];
 
 /* ── helpers ─────────────────────────────────────────────── */
@@ -76,6 +77,7 @@ export default function QuickCapture() {
   const [form, setForm] = useState(getEmptyForm());
   const [slotConflict, setSlotConflict] = useState('');
   const [deleteId, setDeleteId] = useState(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(null);
 
   const tbodyRef = useRef(null);
 
@@ -330,9 +332,16 @@ export default function QuickCapture() {
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   }
   function toggleSelectAll(checked) { setSelected(checked ? new Set(filtered.map(r => r.id)) : new Set()); }
-  async function deleteSelected() {
-    for (const id of selected) { try { await api.deleteTask(id); } catch { /* skip */ } }
-    showToast(selected.size + ' tasks deleted', 'success'); setSelected(new Set()); loadData();
+  function requestDeleteSelected() {
+    const tasksToDelete = rows.filter(r => selected.has(r.id));
+    const scheduledTasks = tasksToDelete.filter(r => r.schedDate && r.schedTimeFrom);
+    setBulkDeleteConfirm({ all: tasksToDelete, scheduled: scheduledTasks });
+  }
+  async function confirmBulkDelete() {
+    if (!bulkDeleteConfirm) return;
+    for (const t of bulkDeleteConfirm.all) { try { await api.deleteTask(t.id); } catch { /* skip */ } }
+    showToast(bulkDeleteConfirm.all.length + ' tasks deleted', 'success');
+    setSelected(new Set()); setBulkDeleteConfirm(null); loadData();
   }
 
   /* ── keyboard navigation ── */
@@ -437,7 +446,7 @@ export default function QuickCapture() {
         <div className="ss-toolbar">
           <div className="ss-toolbar-left">
             <input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} checked={selected.size > 0 && selected.size === filtered.length} />
-            <button className={'ss-del-btn' + (selected.size > 0 ? ' active' : '')} onClick={deleteSelected} disabled={selected.size === 0}>&#10005; Delete</button>
+            <button className={'ss-del-btn' + (selected.size > 0 ? ' active' : '')} onClick={requestDeleteSelected} disabled={selected.size === 0}>&#10005; Delete</button>
             {selected.size > 0 && <span className="ss-sel-count">{selected.size} selected</span>}
           </div>
         </div>
@@ -663,17 +672,78 @@ export default function QuickCapture() {
         </div>
       </div>
 
-      {/* Delete Confirmation */}
+      {/* Single Delete Confirmation */}
       <div className={'modal-overlay' + (deleteId ? ' show' : '')} onClick={e => { if (e.target === e.currentTarget) setDeleteId(null); }}>
-        <div className="modal" style={{ maxWidth: 400 }}>
+        <div className="modal" style={{ maxWidth: 440 }}>
           <div className="modal-header">
             <h3>Confirm Delete</h3>
             <button className="modal-close" onClick={() => setDeleteId(null)}>&times;</button>
           </div>
-          <div className="modal-body"><p>Are you sure you want to delete this task? This action cannot be undone.</p></div>
+          <div className="modal-body">
+            {(() => {
+              const task = rows.find(r => r.id === deleteId);
+              if (!task) return <p>Are you sure you want to delete this task?</p>;
+              const isScheduled = task.schedDate && task.schedTimeFrom;
+              return (
+                <div>
+                  {isScheduled && (
+                    <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: 14 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#DC2626', marginBottom: 4 }}>&#9888; Scheduled Task</div>
+                      <div style={{ fontSize: 11, color: '#7F1D1D' }}>This task is scheduled for <strong>{task.schedDate}</strong> at <strong>{task.schedTimeFrom}</strong>. Deleting it will remove it from the daily schedule.</div>
+                    </div>
+                  )}
+                  <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '12px 16px' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{task.description}</div>
+                    {task.schedDate && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Date: {task.schedDate} {task.schedTimeFrom ? '| Time: ' + task.schedTimeFrom + (task.schedTimeTo ? ' - ' + task.schedTimeTo : '') : ''}</div>}
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Priority: {task.priority} | Send To: {task.sendTo}</div>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 12 }}>Are you sure you want to delete this task? This cannot be undone.</p>
+                </div>
+              );
+            })()}
+          </div>
           <div className="modal-footer">
             <button className="btn btn-outline" onClick={() => setDeleteId(null)}>Cancel</button>
-            <button className="btn btn-danger" onClick={() => handleDelete(deleteId)}>Delete</button>
+            <button className="btn btn-danger" onClick={() => handleDelete(deleteId)}>Delete Task</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Bulk Delete Confirmation */}
+      <div className={'modal-overlay' + (bulkDeleteConfirm ? ' show' : '')} onClick={e => { if (e.target === e.currentTarget) setBulkDeleteConfirm(null); }}>
+        <div className="modal" style={{ maxWidth: 520 }}>
+          <div className="modal-header">
+            <h3>Delete {bulkDeleteConfirm?.all?.length || 0} Tasks</h3>
+            <button className="modal-close" onClick={() => setBulkDeleteConfirm(null)}>&times;</button>
+          </div>
+          <div className="modal-body">
+            {bulkDeleteConfirm?.scheduled?.length > 0 && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#DC2626', marginBottom: 8 }}>&#9888; Warning: {bulkDeleteConfirm.scheduled.length} scheduled task{bulkDeleteConfirm.scheduled.length > 1 ? 's' : ''} will be deleted</div>
+                <div style={{ fontSize: 11, color: '#7F1D1D', marginBottom: 8 }}>The following tasks have scheduled dates/times and will be removed from the daily schedule:</div>
+                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  {bulkDeleteConfirm.scheduled.map((t, i) => (
+                    <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: i < bulkDeleteConfirm.scheduled.length - 1 ? '1px solid #FECACA' : 'none' }}>
+                      <span style={{ background: '#DC2626', color: 'white', borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{t.schedDate}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#7F1D1D' }}>{t.description}</span>
+                      {t.schedTimeFrom && <span style={{ fontSize: 10, color: '#991B1B', marginLeft: 'auto', flexShrink: 0 }}>{t.schedTimeFrom}{t.schedTimeTo ? ' - ' + t.schedTimeTo : ''}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {bulkDeleteConfirm && bulkDeleteConfirm.all.length > (bulkDeleteConfirm.scheduled?.length || 0) && (
+              <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  {bulkDeleteConfirm.all.length - (bulkDeleteConfirm.scheduled?.length || 0)} unscheduled task{bulkDeleteConfirm.all.length - (bulkDeleteConfirm.scheduled?.length || 0) > 1 ? 's' : ''} will also be deleted.
+                </div>
+              </div>
+            )}
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>This action cannot be undone. Are you sure?</p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-outline" onClick={() => setBulkDeleteConfirm(null)}>Cancel</button>
+            <button className="btn btn-danger" onClick={confirmBulkDelete}>Delete {bulkDeleteConfirm?.all?.length || 0} Tasks</button>
           </div>
         </div>
       </div>

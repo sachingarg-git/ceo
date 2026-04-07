@@ -6,13 +6,20 @@ const TIME_SLOTS = [
   '7:00 AM','7:30 AM','8:00 AM','8:30 AM','9:00 AM','9:30 AM',
   '10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','12:30 PM',
   '1:00 PM','1:30 PM','2:00 PM','2:30 PM','3:00 PM','3:30 PM',
-  '4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM','6:30 PM','7:00 PM'
+  '4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM','6:30 PM','7:00 PM',
+  '7:30 PM','8:00 PM','8:30 PM','9:00 PM','9:30 PM','10:00 PM','10:30 PM','11:00 PM','11:30 PM'
 ];
 
 const STATUS_FILTERS = ['Active', 'Paused', 'Stopped', 'All'];
 const FREQUENCIES = ['Daily', 'Weekly', 'Monthly', 'Yearly', 'Fixed Date'];
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const WEEK_POSITIONS = ['First', 'Second', 'Third', 'Fourth', 'Last'];
+const WEEK_POSITIONS = [
+  { value: 'First', label: '1st' },
+  { value: 'Second', label: '2nd' },
+  { value: 'Third', label: '3rd' },
+  { value: 'Fourth', label: '4th' },
+  { value: 'Last', label: 'Last' },
+];
 const TASK_STATUSES = ['Active', 'Paused', 'Stopped'];
 const SL_STATUSES = ['Scheduled', 'Waiting', 'Completed', 'Skipped'];
 
@@ -22,7 +29,7 @@ function showWeekday(freq) {
   return freq === 'Weekly' || freq === 'Monthly';
 }
 function showWeekPosition(freq) {
-  return freq === 'Monthly';
+  return freq === 'Weekly' || freq === 'Monthly';
 }
 function showFixedDate(freq) {
   return freq === 'Yearly' || freq === 'Fixed Date';
@@ -360,7 +367,7 @@ export default function RecurringTasks() {
                         <td data-row={idx} data-col={6}>
                           <select className="ss-cell" value={row.weekPosition || ''} onChange={e => handleCellChange(row.id, 'weekPosition', e.target.value)} disabled={!wpEnabled}>
                             <option value="">--</option>
-                            {WEEK_POSITIONS.map(wp => <option key={wp} value={wp}>{wp}</option>)}
+                            {WEEK_POSITIONS.map(wp => <option key={wp.value} value={wp.value}>{wp.label}</option>)}
                           </select>
                         </td>
                         {/* 7: Fixed Date */}
@@ -450,7 +457,7 @@ export default function RecurringTasks() {
                       <td>
                         <select className="ss-cell" value={newRow.weekPosition} onChange={e => updateNewRowField('weekPosition', e.target.value)} disabled={!showWeekPosition(newRow.frequency)}>
                           <option value="">--</option>
-                          {WEEK_POSITIONS.map(wp => <option key={wp} value={wp}>{wp}</option>)}
+                          {WEEK_POSITIONS.map(wp => <option key={wp.value} value={wp.value}>{wp.label}</option>)}
                         </select>
                       </td>
                       {/* Fixed Date */}
