@@ -10,6 +10,9 @@ export default function RegisteredCompanies() {
   const [search, setSearch] = useState('');
   const [detailModal, setDetailModal] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
+  const [pwdModal, setPwdModal] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   useEffect(() => { loadCompanies(); }, []);
 
@@ -71,6 +74,24 @@ export default function RegisteredCompanies() {
       showToast('Error deleting company', 'error');
     }
     setActionLoading(null);
+  }
+
+  function openPasswordModal(company) {
+    setPwdModal(company);
+    setNewPassword('');
+    setConfirmPassword('');
+  }
+
+  async function handleResetPassword() {
+    if (!newPassword) { showToast('Password is required', 'warning'); return; }
+    if (newPassword.length < 4) { showToast('Password must be at least 4 characters', 'warning'); return; }
+    if (newPassword !== confirmPassword) { showToast('Passwords do not match', 'warning'); return; }
+    const id = pwdModal?._id || pwdModal?.id;
+    try {
+      const res = await api.updateCompanyPassword(id, newPassword);
+      if (res.success) { showToast('Password updated successfully', 'success'); setPwdModal(null); }
+      else showToast(res.error || 'Failed to update password', 'error');
+    } catch { showToast('Error updating password', 'error'); }
   }
 
   const filtered = companies.filter(c => {
@@ -208,6 +229,7 @@ export default function RegisteredCompanies() {
                           {status === 'rejected' && (
                             <button className="btn btn-success btn-xs" disabled={actionLoading === cId} onClick={() => handleApprove(cId)}>Approve</button>
                           )}
+                          <button className="btn btn-outline btn-xs" disabled={actionLoading === cId} onClick={() => openPasswordModal(c)}>Reset Pwd</button>
                           <button className="btn btn-outline btn-xs" disabled={actionLoading === cId} onClick={() => handleDelete(cId)} style={{ color: '#ef4444', borderColor: '#ef4444' }}>Delete</button>
                         </div>
                       </td>
@@ -284,6 +306,41 @@ export default function RegisteredCompanies() {
                 <button className="btn btn-success btn-sm" onClick={() => { handleApprove(detailModal._id || detailModal.id); setDetailModal(null); }}>Approve</button>
               )}
               <button className="btn btn-outline btn-sm" onClick={() => setDetailModal(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {pwdModal && (
+        <div className="modal-overlay show" onClick={() => setPwdModal(null)}>
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Reset Password</h3>
+              <button className="modal-close" onClick={() => setPwdModal(null)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ background: 'var(--primary-light)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>COMPANY</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{pwdModal.legalName || pwdModal.tradeName}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Username: <strong>{pwdModal.username}</strong></div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">New Password</label>
+                <input className="form-input" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Enter new password" autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Confirm Password</label>
+                <input className="form-input" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Confirm new password"
+                  onKeyDown={e => { if (e.key === 'Enter') handleResetPassword(); }} />
+              </div>
+              {newPassword && confirmPassword && newPassword !== confirmPassword && (
+                <div style={{ color: 'var(--danger)', fontSize: 11, fontWeight: 600, marginTop: -8, marginBottom: 8 }}>Passwords do not match</div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-outline" onClick={() => setPwdModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleResetPassword} disabled={!newPassword || newPassword !== confirmPassword}>Update Password</button>
             </div>
           </div>
         </div>

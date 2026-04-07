@@ -83,4 +83,5 @@ export const api = {
   approveCompany: (id) => request(`/companies/${id}/approve`, { method: 'PUT' }),
   rejectCompany: (id) => request(`/companies/${id}/reject`, { method: 'PUT' }),
   deleteCompany: (id) => request(`/companies/${id}`, { method: 'DELETE' }),
+  updateCompanyPassword: (id, password) => request(`/companies/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) }),
 };

@@ -202,6 +202,19 @@ router.get('/', async (req, res) => {
   }
 });
 
+// PUT /api/companies/:id/password - Reset password
+router.put('/:id/password', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { password } = req.body;
+    if (!password) return res.json({ success: false, error: 'Password is required' });
+    await query('UPDATE Companies SET Password = @password WHERE ID = @id', { password, id });
+    res.json({ success: true, message: 'Password updated successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // PUT /api/companies/:id/approve - Approve company
 router.put('/:id/approve', async (req, res) => {
   try {
