@@ -36,15 +36,21 @@ router.post('/verify-gst', async (req, res) => {
 
     const data = await response.json();
 
-    if (data.result_code !== 101 || !data.result?.taxpayerDetails) {
-      return res.json({ success: false, error: 'GST verification failed. Please check the GSTIN number.', raw: data });
+    // Support both response formats:
+    // Format 1: { result_code: 101, result: { taxpayerDetails: ... } }
+    // Format 2: { status: { code: 200 }, data: { taxpayerDetails: ... } }
+    const tp = data.result?.taxpayerDetails || data.data?.taxpayerDetails;
+
+    if (!tp) {
+      return res.json({ success: false, error: 'GST verification failed. Please check the GSTIN number.' });
     }
 
-    const tp = data.result.taxpayerDetails;
-
-    // Build address from pradr
+    // Build address from business_places or pradr
     let address = '';
-    if (tp.pradr?.addr) {
+    const bizPlaces = data.data?.business_places || data.result?.business_places;
+    if (bizPlaces?.pradr?.adr) {
+      address = bizPlaces.pradr.adr;
+    } else if (tp.pradr?.addr) {
       const a = tp.pradr.addr;
       address = [a.bno, a.flno, a.bnm, a.st, a.loc, a.dst, a.stcd, a.pncd].filter(Boolean).join(', ');
     }
