@@ -295,8 +295,8 @@ export default function RegisteredCompanies() {
 function ModalDetail({ label, value, full }) {
   return (
     <div style={{ gridColumn: full ? '1 / -1' : undefined }}>
-      <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2, fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 14, color: '#e0e0e0' }}>{value || '-'}</div>
+      <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4, fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{value || '-'}</div>
     </div>
   );
 }
