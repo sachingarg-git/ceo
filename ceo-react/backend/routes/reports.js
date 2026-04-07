@@ -5,16 +5,17 @@ const { query } = require('../db');
 // GET /api/daily-report
 router.get('/daily-report', async (req, res) => {
   try {
+    const companyId = req.companyId;
     const today = new Date(); today.setHours(0,0,0,0);
     const days = [];
 
     // Get all DR data
-    const drResult = await query('SELECT * FROM DailyReport ORDER BY Date DESC');
+    const drResult = await query('SELECT * FROM DailyReport WHERE CompanyID = @companyId ORDER BY Date DESC', { companyId });
     const drMap = {};
     drResult.recordset.forEach(r => { drMap[r.Date] = r; });
 
     // Get QC data for counts
-    const qcResult = await query("SELECT * FROM QuickCapture WHERE SendTo = 'Someday List'");
+    const qcResult = await query("SELECT * FROM QuickCapture WHERE SendTo = 'Someday List' AND CompanyID = @companyId", { companyId });
 
     let totalScheduled = 0, totalCompleted = 0, totalDays = 0, daysAbove80 = 0, daysBelow50 = 0;
 
@@ -82,13 +83,14 @@ router.get('/daily-report', async (req, res) => {
 router.post('/daily-report', async (req, res) => {
   try {
     const b = req.body;
+    const companyId = req.companyId;
     const dateStr = b.date || formatDateISO(new Date());
 
-    const existing = await query('SELECT ID FROM DailyReport WHERE Date = @date', { date: dateStr });
+    const existing = await query('SELECT ID FROM DailyReport WHERE Date = @date AND CompanyID = @companyId', { date: dateStr, companyId });
 
     if (existing.recordset.length > 0) {
       const sets = [];
-      const params = { id: existing.recordset[0].ID };
+      const params = { id: existing.recordset[0].ID, companyId };
       if (b.dayRating !== undefined) { sets.push('DayRating = @dayRating'); params.dayRating = b.dayRating; }
       if (b.achievements !== undefined) { sets.push('Achievements = @achievements'); params.achievements = b.achievements; }
       if (b.notes !== undefined) { sets.push('Notes = @notes'); params.notes = b.notes; }
@@ -97,12 +99,12 @@ router.post('/daily-report', async (req, res) => {
       if (b.completionPct !== undefined) { sets.push('CompletionPct = @completionPct'); params.completionPct = b.completionPct; }
       if (b.waiting !== undefined) { sets.push('Waiting = @waiting'); params.waiting = b.waiting; }
       if (sets.length > 0) {
-        await query(`UPDATE DailyReport SET ${sets.join(', ')} WHERE ID = @id`, params);
+        await query(`UPDATE DailyReport SET ${sets.join(', ')} WHERE ID = @id AND CompanyID = @companyId`, params);
       }
     } else {
       await query(
-        `INSERT INTO DailyReport (Date, DayRating, Scheduled, Completed, CompletionPct, Waiting, Achievements, Notes)
-         VALUES (@date, @dayRating, @scheduled, @completed, @completionPct, @waiting, @achievements, @notes)`,
+        `INSERT INTO DailyReport (Date, DayRating, Scheduled, Completed, CompletionPct, Waiting, Achievements, Notes, CompanyID)
+         VALUES (@date, @dayRating, @scheduled, @completed, @completionPct, @waiting, @achievements, @notes, @companyId)`,
         {
           date: dateStr,
           dayRating: b.dayRating || '',
@@ -112,6 +114,7 @@ router.post('/daily-report', async (req, res) => {
           waiting: b.waiting || 0,
           achievements: b.achievements || '',
           notes: b.notes || '',
+          companyId,
         }
       );
     }
@@ -124,6 +127,7 @@ router.post('/daily-report', async (req, res) => {
 // GET /api/weekly-scorecard
 router.get('/weekly-scorecard', async (req, res) => {
   try {
+    const companyId = req.companyId;
     const year = new Date().getFullYear();
     const march1 = new Date(year, 2, 1);
     const march1Day = (march1.getDay() + 6) % 7;
@@ -132,15 +136,15 @@ router.get('/weekly-scorecard', async (req, res) => {
     week1Start.setHours(0,0,0,0);
 
     // WS manual data
-    const wsResult = await query('SELECT * FROM WeeklyScorecard ORDER BY WeekNum ASC');
+    const wsResult = await query('SELECT * FROM WeeklyScorecard WHERE CompanyID = @companyId ORDER BY WeekNum ASC', { companyId });
     const wsMap = {};
     wsResult.recordset.forEach(r => { wsMap[r.WeekNum] = r; });
 
     // QC data
-    const qcResult = await query("SELECT SchedDate, SLStatus FROM QuickCapture WHERE SendTo = 'Someday List'");
+    const qcResult = await query("SELECT SchedDate, SLStatus FROM QuickCapture WHERE SendTo = 'Someday List' AND CompanyID = @companyId", { companyId });
 
     // DR data for ratings
-    const drResult = await query('SELECT Date, DayRating FROM DailyReport');
+    const drResult = await query('SELECT Date, DayRating FROM DailyReport WHERE CompanyID = @companyId', { companyId });
     const drRatingMap = {};
     drResult.recordset.forEach(r => { drRatingMap[r.Date] = r.DayRating; });
 
@@ -203,23 +207,24 @@ router.get('/weekly-scorecard', async (req, res) => {
 router.post('/weekly-scorecard', async (req, res) => {
   try {
     const b = req.body;
+    const companyId = req.companyId;
     const weekNum = parseInt(b.weekNum);
     if (!weekNum) return res.json({ success: false, error: 'Invalid week number' });
 
-    const existing = await query('SELECT ID FROM WeeklyScorecard WHERE WeekNum = @weekNum', { weekNum });
+    const existing = await query('SELECT ID FROM WeeklyScorecard WHERE WeekNum = @weekNum AND CompanyID = @companyId', { weekNum, companyId });
 
     if (existing.recordset.length > 0) {
       const sets = [];
-      const params = { id: existing.recordset[0].ID };
+      const params = { id: existing.recordset[0].ID, companyId };
       if (b.achievements !== undefined) { sets.push('Achievements = @achievements'); params.achievements = b.achievements; }
       if (b.carryForward !== undefined) { sets.push('CarryForward = @carryForward'); params.carryForward = b.carryForward; }
       if (sets.length > 0) {
-        await query(`UPDATE WeeklyScorecard SET ${sets.join(', ')} WHERE ID = @id`, params);
+        await query(`UPDATE WeeklyScorecard SET ${sets.join(', ')} WHERE ID = @id AND CompanyID = @companyId`, params);
       }
     } else {
       await query(
-        `INSERT INTO WeeklyScorecard (WeekNum, StartDate, EndDate, Planned, Done, CompletionPct, AvgDayRating, Achievements, CarryForward)
-         VALUES (@weekNum, @startDate, @endDate, @planned, @done, @completionPct, @avgDayRating, @achievements, @carryForward)`,
+        `INSERT INTO WeeklyScorecard (WeekNum, StartDate, EndDate, Planned, Done, CompletionPct, AvgDayRating, Achievements, CarryForward, CompanyID)
+         VALUES (@weekNum, @startDate, @endDate, @planned, @done, @completionPct, @avgDayRating, @achievements, @carryForward, @companyId)`,
         {
           weekNum,
           startDate: b.startDate || '',
@@ -230,6 +235,7 @@ router.post('/weekly-scorecard', async (req, res) => {
           avgDayRating: b.avgDayRating || 0,
           achievements: b.achievements || '',
           carryForward: b.carryForward || '',
+          companyId,
         }
       );
     }
@@ -242,6 +248,7 @@ router.post('/weekly-scorecard', async (req, res) => {
 // GET /api/next-week-plan
 router.get('/next-week-plan', async (req, res) => {
   try {
+    const companyId = req.companyId;
     const weekOffset = parseInt(req.query.weekOffset) || 0;
     const today = new Date(); today.setHours(0,0,0,0);
     const currentDay = (today.getDay() + 6) % 7; // 0=Mon
@@ -268,7 +275,7 @@ router.get('/next-week-plan', async (req, res) => {
 
     // Get someday list
     const { computeSomedayList } = require('./schedule');
-    const sl = await computeSomedayList();
+    const sl = await computeSomedayList(companyId);
     const tasks = sl.tasks || [];
 
     const grid = weekDates.map(wd => {

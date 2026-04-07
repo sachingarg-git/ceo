@@ -5,7 +5,7 @@ const { query } = require('../db');
 // GET all recurring tasks
 router.get('/', async (req, res) => {
   try {
-    const result = await query('SELECT * FROM RecurringTasks ORDER BY ID ASC');
+    const result = await query('SELECT * FROM RecurringTasks WHERE CompanyID = @companyId ORDER BY ID ASC', { companyId: req.companyId });
     const today = new Date(); today.setHours(0,0,0,0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -54,9 +54,9 @@ router.post('/', async (req, res) => {
   try {
     const b = req.body;
     const result = await query(
-      `INSERT INTO RecurringTasks (Task, Priority, BatchType, Frequency, Weekday, WeekPosition, FixedDate, SLStatus, Status, Notes, TimeSlot, DateAdded)
+      `INSERT INTO RecurringTasks (Task, Priority, BatchType, Frequency, Weekday, WeekPosition, FixedDate, SLStatus, Status, Notes, TimeSlot, DateAdded, CompanyID)
        OUTPUT INSERTED.ID
-       VALUES (@task, @priority, @batchType, @frequency, @weekday, @weekPosition, @fixedDate, @slStatus, @status, @notes, @timeSlot, @dateAdded)`,
+       VALUES (@task, @priority, @batchType, @frequency, @weekday, @weekPosition, @fixedDate, @slStatus, @status, @notes, @timeSlot, @dateAdded, @companyId)`,
       {
         task: b.task || b.name || '',
         priority: b.priority || 'Medium',
@@ -70,6 +70,7 @@ router.post('/', async (req, res) => {
         notes: b.notes || '',
         timeSlot: b.timeSlot || '',
         dateAdded: formatDateISO(new Date()),
+        companyId: req.companyId,
       }
     );
     res.json({ success: true, id: result.recordset[0].ID, message: 'Recurring task added' });
@@ -93,7 +94,7 @@ router.put('/:id', async (req, res) => {
     };
 
     const sets = [];
-    const params = { id };
+    const params = { id, companyId: req.companyId };
 
     for (const [col, key] of Object.entries(fields)) {
       if (b[key] !== undefined) {
@@ -109,7 +110,7 @@ router.put('/:id', async (req, res) => {
 
     if (sets.length === 0) return res.json({ success: true, message: 'No changes' });
 
-    await query(`UPDATE RecurringTasks SET ${sets.join(', ')} WHERE ID = @id`, params);
+    await query(`UPDATE RecurringTasks SET ${sets.join(', ')} WHERE ID = @id AND CompanyID = @companyId`, params);
     res.json({ success: true, id, message: 'Recurring task updated' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -120,7 +121,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await query('DELETE FROM RecurringTasks WHERE ID = @id', { id });
+    await query('DELETE FROM RecurringTasks WHERE ID = @id AND CompanyID = @companyId', { id, companyId: req.companyId });
     res.json({ success: true, id, message: 'Recurring task deleted' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

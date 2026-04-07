@@ -251,6 +251,24 @@ async function initDatabase() {
   `);
   console.log('Companies table ready.');
 
+  // Add CompanyID column to all data tables for multi-tenancy
+  const dataTables = ['QuickCapture', 'RecurringTasks', 'DailySchedule', 'DailyReport', 'WeeklyScorecard', 'InformationSystem'];
+  for (const tbl of dataTables) {
+    try {
+      await p.request().query(`
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('${tbl}') AND name = 'CompanyID')
+        ALTER TABLE ${tbl} ADD CompanyID INT DEFAULT 0
+      `);
+    } catch (e) { /* column may already exist */ }
+  }
+  // Update existing rows with NULL CompanyID to 0 (admin)
+  for (const tbl of dataTables) {
+    try {
+      await p.request().query(`UPDATE ${tbl} SET CompanyID = 0 WHERE CompanyID IS NULL`);
+    } catch (e) { /* ignore */ }
+  }
+  console.log('CompanyID columns ready.');
+
   // Seed Masters data if empty
   const mastersCheck = await p.request().query('SELECT COUNT(*) as cnt FROM Masters');
   if (mastersCheck.recordset[0].cnt === 0) {

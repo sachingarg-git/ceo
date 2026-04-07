@@ -1,10 +1,21 @@
 const API_BASE = '/api';
 
+function getCompanyId() {
+  try {
+    const user = JSON.parse(localStorage.getItem('ceo_user') || '{}');
+    // Company users get their company ID; admin users get 0
+    if (user.type === 'company') return String(user.id || 0);
+    return '0';
+  } catch { return '0'; }
+}
+
 async function request(url, options = {}) {
-  const res = await fetch(API_BASE + url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-company-id': getCompanyId(),
+    ...(options.headers || {}),
+  };
+  const res = await fetch(API_BASE + url, { ...options, headers });
   return res.json();
 }
 

@@ -5,7 +5,7 @@ const { query, sql } = require('../db');
 // GET all quick capture tasks
 router.get('/', async (req, res) => {
   try {
-    const result = await query('SELECT * FROM QuickCapture ORDER BY ID ASC');
+    const result = await query('SELECT * FROM QuickCapture WHERE CompanyID = @companyId ORDER BY ID ASC', { companyId: req.companyId });
     const rows = result.recordset.map((r, i) => ({
       id: r.ID,
       _rowNum: r.ID,
@@ -47,9 +47,9 @@ router.post('/', async (req, res) => {
     const timeStr = b.time || formatTimeNow(now);
 
     const result = await query(
-      `INSERT INTO QuickCapture (Date, Time, Task, Priority, BatchType, SendTo, SLStatus, SchedDate, SchedTimeFrom, SchedTimeTo, Deadline, Notes, Status)
+      `INSERT INTO QuickCapture (Date, Time, Task, Priority, BatchType, SendTo, SLStatus, SchedDate, SchedTimeFrom, SchedTimeTo, Deadline, Notes, Status, CompanyID)
        OUTPUT INSERTED.ID
-       VALUES (@date, @time, @task, @priority, @batchType, @sendTo, @slStatus, @schedDate, @schedTimeFrom, @schedTimeTo, @deadline, @notes, @status)`,
+       VALUES (@date, @time, @task, @priority, @batchType, @sendTo, @slStatus, @schedDate, @schedTimeFrom, @schedTimeTo, @deadline, @notes, @status, @companyId)`,
       {
         date: dateStr,
         time: timeStr,
@@ -64,6 +64,7 @@ router.post('/', async (req, res) => {
         deadline: b.deadline || '',
         notes: b.notes || '',
         status: b.status || 'Not Started',
+        companyId: req.companyId,
       }
     );
 
@@ -80,7 +81,7 @@ router.put('/:id', async (req, res) => {
     const b = req.body;
 
     const sets = [];
-    const params = { id };
+    const params = { id, companyId: req.companyId };
 
     const fields = {
       Date: 'date', Time: 'time', Task: 'task', Priority: 'priority',
@@ -103,7 +104,7 @@ router.put('/:id', async (req, res) => {
       return res.json({ success: true, message: 'No changes' });
     }
 
-    await query(`UPDATE QuickCapture SET ${sets.join(', ')} WHERE ID = @id`, params);
+    await query(`UPDATE QuickCapture SET ${sets.join(', ')} WHERE ID = @id AND CompanyID = @companyId`, params);
     res.json({ success: true, id, message: 'Task updated' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -114,7 +115,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await query('DELETE FROM QuickCapture WHERE ID = @id', { id });
+    await query('DELETE FROM QuickCapture WHERE ID = @id AND CompanyID = @companyId', { id, companyId: req.companyId });
     res.json({ success: true, id, message: 'Task deleted' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

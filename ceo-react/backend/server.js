@@ -18,6 +18,12 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// Middleware: extract CompanyID from header for multi-tenancy
+app.use((req, res, next) => {
+  req.companyId = parseInt(req.headers['x-company-id']) || 0;
+  next();
+});
+
 // Routes
 app.use('/api/quick-capture', tasksRouter);
 app.use('/api/recurring-tasks', recurringRouter);

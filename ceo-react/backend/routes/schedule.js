@@ -12,7 +12,7 @@ const TIME_SLOTS = [
 // GET /api/someday-list (computed)
 router.get('/someday-list', async (req, res) => {
   try {
-    const result = await computeSomedayList();
+    const result = await computeSomedayList(req.companyId);
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -23,21 +23,22 @@ router.get('/someday-list', async (req, res) => {
 router.get('/daily-schedule/:date', async (req, res) => {
   try {
     const dateStr = req.params.date;
+    const companyId = req.companyId;
 
     // Get someday list tasks (QC Someday + RT)
-    const sl = await computeSomedayList();
+    const sl = await computeSomedayList(companyId);
     const slTasks = sl.tasks || [];
 
     // Also get ALL QC tasks for this date (including Information System sendTo)
     const allQcResult = await query(
-      "SELECT * FROM QuickCapture WHERE SchedDate = @date ORDER BY ID ASC",
-      { date: dateStr }
+      "SELECT * FROM QuickCapture WHERE SchedDate = @date AND CompanyID = @companyId ORDER BY ID ASC",
+      { date: dateStr, companyId }
     );
 
     // DS done flags for this date
     const dsResult2 = await query(
-      "SELECT Source, SourceRow, Done FROM DailySchedule WHERE Date = @date AND Source != '_DAY'",
-      { date: dateStr }
+      "SELECT Source, SourceRow, Done FROM DailySchedule WHERE Date = @date AND Source != '_DAY' AND CompanyID = @companyId",
+      { date: dateStr, companyId }
     );
     const doneFlags = {};
     dsResult2.recordset.forEach(r => { doneFlags[r.Source + '|' + r.SourceRow] = r.Done; });
@@ -75,7 +76,8 @@ router.get('/daily-schedule/:date', async (req, res) => {
     const waitingForDate = allTasks.filter(t => t.schedDate === dateStr && t.baseStatus === 'Waiting');
     // Also get unscheduled waiting tasks (no date set - show on every day)
     const unschedWaitResult = await query(
-      "SELECT * FROM QuickCapture WHERE SLStatus = 'Waiting' AND (SchedDate IS NULL OR SchedDate = '') ORDER BY ID ASC"
+      "SELECT * FROM QuickCapture WHERE SLStatus = 'Waiting' AND (SchedDate IS NULL OR SchedDate = '') AND CompanyID = @companyId ORDER BY ID ASC",
+      { companyId }
     );
     const unschedWaiting = unschedWaitResult.recordset.map(r => ({
       seq: 0, source: 'QC', rowNum: r.ID, task: r.Task || '',
@@ -88,15 +90,15 @@ router.get('/daily-schedule/:date', async (req, res) => {
 
     // Day rating
     const dsResult = await query(
-      "SELECT DayRating FROM DailySchedule WHERE Date = @date AND Source = '_DAY'",
-      { date: dateStr }
+      "SELECT DayRating FROM DailySchedule WHERE Date = @date AND Source = '_DAY' AND CompanyID = @companyId",
+      { date: dateStr, companyId }
     );
     const dayRating = dsResult.recordset.length > 0 ? dsResult.recordset[0].DayRating || '' : '';
 
     // Actually done notes
     const notesResult = await query(
-      "SELECT ActuallyDone FROM DailySchedule WHERE Date = @date AND Source = '_DAY'",
-      { date: dateStr }
+      "SELECT ActuallyDone FROM DailySchedule WHERE Date = @date AND Source = '_DAY' AND CompanyID = @companyId",
+      { date: dateStr, companyId }
     );
     const actuallyDone = notesResult.recordset.length > 0 ? notesResult.recordset[0].ActuallyDone || '' : '';
 
@@ -120,25 +122,26 @@ router.get('/daily-schedule/:date', async (req, res) => {
 router.post('/mark-done', async (req, res) => {
   try {
     const { date, source, sourceRow, done } = req.body;
+    const companyId = req.companyId;
     const dateStr = date || formatDateISO(new Date());
     const doneVal = done || 'Yes';
     const now = new Date();
     const timeStr = formatTimeNow(now);
 
     const existing = await query(
-      "SELECT ID FROM DailySchedule WHERE Date = @date AND Source = @source AND SourceRow = @sourceRow",
-      { date: dateStr, source: source || '', sourceRow: String(sourceRow || '') }
+      "SELECT ID FROM DailySchedule WHERE Date = @date AND Source = @source AND SourceRow = @sourceRow AND CompanyID = @companyId",
+      { date: dateStr, source: source || '', sourceRow: String(sourceRow || ''), companyId }
     );
 
     if (existing.recordset.length > 0) {
       await query(
-        "UPDATE DailySchedule SET Done = @done, DoneTime = @doneTime WHERE ID = @id",
-        { done: doneVal, doneTime: timeStr, id: existing.recordset[0].ID }
+        "UPDATE DailySchedule SET Done = @done, DoneTime = @doneTime WHERE ID = @id AND CompanyID = @companyId",
+        { done: doneVal, doneTime: timeStr, id: existing.recordset[0].ID, companyId }
       );
     } else {
       await query(
-        "INSERT INTO DailySchedule (Date, Source, SourceRow, Done, DoneTime) VALUES (@date, @source, @sourceRow, @done, @doneTime)",
-        { date: dateStr, source: source || '', sourceRow: String(sourceRow || ''), done: doneVal, doneTime: timeStr }
+        "INSERT INTO DailySchedule (Date, Source, SourceRow, Done, DoneTime, CompanyID) VALUES (@date, @source, @sourceRow, @done, @doneTime, @companyId)",
+        { date: dateStr, source: source || '', sourceRow: String(sourceRow || ''), done: doneVal, doneTime: timeStr, companyId }
       );
     }
     // Also update the source table (QuickCapture or RecurringTasks) SLStatus
@@ -146,8 +149,8 @@ router.post('/mark-done', async (req, res) => {
       const newStatus = doneVal === 'Yes' ? 'Completed' : 'Scheduled';
       const doneDate = doneVal === 'Yes' ? dateStr : '';
       await query(
-        "UPDATE QuickCapture SET SLStatus = @status, DoneDate = @doneDate WHERE ID = @id",
-        { status: newStatus, doneDate, id: parseInt(sourceRow) }
+        "UPDATE QuickCapture SET SLStatus = @status, DoneDate = @doneDate WHERE ID = @id AND CompanyID = @companyId",
+        { status: newStatus, doneDate, id: parseInt(sourceRow), companyId }
       );
     }
 
@@ -161,22 +164,23 @@ router.post('/mark-done', async (req, res) => {
 router.post('/day-rating', async (req, res) => {
   try {
     const { date, rating } = req.body;
+    const companyId = req.companyId;
     const dateStr = date || formatDateISO(new Date());
 
     const existing = await query(
-      "SELECT ID FROM DailySchedule WHERE Date = @date AND Source = '_DAY'",
-      { date: dateStr }
+      "SELECT ID FROM DailySchedule WHERE Date = @date AND Source = '_DAY' AND CompanyID = @companyId",
+      { date: dateStr, companyId }
     );
 
     if (existing.recordset.length > 0) {
       await query(
-        "UPDATE DailySchedule SET DayRating = @rating WHERE ID = @id",
-        { rating: rating || '', id: existing.recordset[0].ID }
+        "UPDATE DailySchedule SET DayRating = @rating WHERE ID = @id AND CompanyID = @companyId",
+        { rating: rating || '', id: existing.recordset[0].ID, companyId }
       );
     } else {
       await query(
-        "INSERT INTO DailySchedule (Date, Source, DayRating) VALUES (@date, '_DAY', @rating)",
-        { date: dateStr, rating: rating || '' }
+        "INSERT INTO DailySchedule (Date, Source, DayRating, CompanyID) VALUES (@date, '_DAY', @rating, @companyId)",
+        { date: dateStr, rating: rating || '', companyId }
       );
     }
     res.json({ success: true, message: 'Day rating set' });
@@ -189,22 +193,23 @@ router.post('/day-rating', async (req, res) => {
 router.post('/ds-notes', async (req, res) => {
   try {
     const { date, notes } = req.body;
+    const companyId = req.companyId;
     const dateStr = date || formatDateISO(new Date());
 
     const existing = await query(
-      "SELECT ID FROM DailySchedule WHERE Date = @date AND Source = '_DAY'",
-      { date: dateStr }
+      "SELECT ID FROM DailySchedule WHERE Date = @date AND Source = '_DAY' AND CompanyID = @companyId",
+      { date: dateStr, companyId }
     );
 
     if (existing.recordset.length > 0) {
       await query(
-        "UPDATE DailySchedule SET ActuallyDone = @notes WHERE ID = @id",
-        { notes: notes || '', id: existing.recordset[0].ID }
+        "UPDATE DailySchedule SET ActuallyDone = @notes WHERE ID = @id AND CompanyID = @companyId",
+        { notes: notes || '', id: existing.recordset[0].ID, companyId }
       );
     } else {
       await query(
-        "INSERT INTO DailySchedule (Date, Source, ActuallyDone) VALUES (@date, '_DAY', @notes)",
-        { date: dateStr, notes: notes || '' }
+        "INSERT INTO DailySchedule (Date, Source, ActuallyDone, CompanyID) VALUES (@date, '_DAY', @notes, @companyId)",
+        { date: dateStr, notes: notes || '', companyId }
       );
     }
     res.json({ success: true, message: 'Notes saved' });
@@ -214,25 +219,27 @@ router.post('/ds-notes', async (req, res) => {
 });
 
 // ---- Compute Someday List (ported from GS) ----
-async function computeSomedayList() {
+async function computeSomedayList(companyId) {
   const today = new Date(); today.setHours(0,0,0,0);
   const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
   const todayISO = formatDateISO(today);
 
   // QC tasks where SendTo = 'Someday List'
   const qcResult = await query(
-    "SELECT * FROM QuickCapture WHERE SendTo = 'Someday List' ORDER BY ID ASC"
+    "SELECT * FROM QuickCapture WHERE SendTo = 'Someday List' AND CompanyID = @companyId ORDER BY ID ASC",
+    { companyId }
   );
 
   // RT active tasks
   const rtResult = await query(
-    "SELECT * FROM RecurringTasks WHERE Status = 'Active' ORDER BY ID ASC"
+    "SELECT * FROM RecurringTasks WHERE Status = 'Active' AND CompanyID = @companyId ORDER BY ID ASC",
+    { companyId }
   );
 
   // DS done flags for today
   const dsResult = await query(
-    "SELECT Source, SourceRow, Done FROM DailySchedule WHERE Date = @date AND Source != '_DAY'",
-    { date: todayISO }
+    "SELECT Source, SourceRow, Done FROM DailySchedule WHERE Date = @date AND Source != '_DAY' AND CompanyID = @companyId",
+    { date: todayISO, companyId }
   );
   const doneFlags = {};
   dsResult.recordset.forEach(r => {

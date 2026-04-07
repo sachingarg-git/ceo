@@ -4,12 +4,13 @@ const { query } = require('../db');
 
 router.get('/', async (req, res) => {
   try {
+    const companyId = req.companyId;
     const today = new Date(); today.setHours(0,0,0,0);
     const todayISO = formatDateISO(today);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
 
     // QC stats
-    const qcAll = await query('SELECT * FROM QuickCapture');
+    const qcAll = await query('SELECT * FROM QuickCapture WHERE CompanyID = @companyId', { companyId });
     const qcData = qcAll.recordset;
     const qcTotal = qcData.length;
     let toSomeday = 0, toInfoSystem = 0, highPriority = 0;
@@ -33,7 +34,7 @@ router.get('/', async (req, res) => {
     });
 
     // RT stats
-    const rtAll = await query('SELECT * FROM RecurringTasks');
+    const rtAll = await query('SELECT * FROM RecurringTasks WHERE CompanyID = @companyId', { companyId });
     const rtData = rtAll.recordset;
     const rtTotal = rtData.length;
     let rtActive = 0, rtPaused = 0, rtDueToday = 0, rtDueTomorrow = 0;
@@ -50,10 +51,10 @@ router.get('/', async (req, res) => {
 
     // SL stats
     const { computeSomedayList } = require('./schedule');
-    const sl = await computeSomedayList();
+    const sl = await computeSomedayList(companyId);
 
     // Monthly report
-    const drResult = await query("SELECT SLStatus FROM QuickCapture WHERE SendTo = 'Someday List' AND SchedDate IS NOT NULL AND SchedDate != ''");
+    const drResult = await query("SELECT SLStatus FROM QuickCapture WHERE SendTo = 'Someday List' AND SchedDate IS NOT NULL AND SchedDate != '' AND CompanyID = @companyId", { companyId });
     let mTotalSch = 0, mTotalComp = 0;
     drResult.recordset.forEach(r => {
       const slSt = r.SLStatus || '';
