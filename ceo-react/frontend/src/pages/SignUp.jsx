@@ -19,32 +19,17 @@ export default function SignUp({ onBackToLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [animDir, setAnimDir] = useState('forward');
 
-  function goToStep(n, dir = 'forward') {
-    setAnimDir(dir);
-    setError('');
-    setStep(n);
-  }
+  function goToStep(n) { setError(''); setStep(n); }
 
   async function handleVerifyGST() {
-    if (!gstin || gstin.length !== 15) {
-      setError('Please enter a valid 15-character GSTIN');
-      return;
-    }
-    setLoading(true);
-    setError('');
+    if (!gstin || gstin.length !== 15) { setError('Please enter a valid 15-character GSTIN'); return; }
+    setLoading(true); setError('');
     try {
       const res = await api.verifyGST(gstin);
-      if (res.success && res.company) {
-        setGstData(res.company);
-        goToStep(2);
-      } else {
-        setError(res.message || 'GST verification failed. Please check the number and try again.');
-      }
-    } catch (err) {
-      setError('Network error. Please try again.');
-    }
+      if (res.success && res.company) { setGstData(res.company); goToStep(2); }
+      else setError(res.error || 'GST verification failed.');
+    } catch { setError('Network error. Please try again.'); }
     setLoading(false);
   }
 
@@ -52,422 +37,222 @@ export default function SignUp({ onBackToLogin }) {
     if (!username.trim()) { setError('Username is required'); return; }
     if (password.length < 4) { setError('Password must be at least 4 characters'); return; }
     if (password !== confirmPassword) { setError('Passwords do not match'); return; }
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
-      const res = await api.companySignup({
-        gstin,
-        registeredMobile: mobile,
-        username,
-        password,
-        gstData,
-      });
-      if (res.success) {
-        setSuccess(true);
-      } else {
-        setError(res.message || 'Registration failed. Please try again.');
-      }
-    } catch (err) {
-      setError('Network error. Please try again.');
-    }
+      const res = await api.companySignup({ gstin, registeredMobile: mobile, username, password, gstData });
+      if (res.success) setSuccess(true);
+      else setError(res.error || 'Registration failed.');
+    } catch { setError('Network error.'); }
     setLoading(false);
   }
 
   if (success) {
     return (
-      <div className="anime-login-bg" data-on="true">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', zIndex: 1 }}>
-          <div style={cardStyle}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 60, marginBottom: 16 }}>&#10003;</div>
-              <h2 style={{ color: '#fff', marginBottom: 8, textShadow: '0 0 10px rgba(0,210,255,0.5)' }}>Registration Submitted!</h2>
-              <p style={{ color: '#8892b0', marginBottom: 24, lineHeight: 1.6 }}>
-                Your company registration has been submitted successfully. Please wait for admin approval before logging in.
-              </p>
-              <button style={primaryBtnStyle} onClick={onBackToLogin}>Back to Login</button>
-            </div>
-          </div>
+      <div style={pageBg}>
+        <div style={{ ...card, textAlign: 'center', maxWidth: 440 }}>
+          <div style={{ width: 70, height: 70, borderRadius: '50%', background: 'linear-gradient(135deg, #10B981, #34D399)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: '#fff', marginBottom: 16 }}>&#10003;</div>
+          <h2 style={{ fontSize: 22, fontWeight: 800, color: '#1E293B', marginBottom: 8 }}>Registration Submitted!</h2>
+          <p style={{ fontSize: 13, color: '#64748B', marginBottom: 24, lineHeight: 1.7 }}>
+            Your company registration has been submitted successfully.<br />Please wait for admin approval before logging in.
+          </p>
+          <button style={primaryBtn} onClick={onBackToLogin}>Back to Login</button>
         </div>
-        <div className="anime-footer">EA to M.D &mdash; <b>WIZONE</b></div>
       </div>
     );
   }
 
   return (
-    <div className="anime-login-bg" data-on="true">
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', zIndex: 1, padding: '2rem 1rem' }}>
-
-        {/* Step Indicator */}
-        <div style={stepIndicatorStyle}>
-          {STEPS.map((s, i) => (
-            <React.Fragment key={s.num}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 14, fontWeight: 700,
-                  background: step >= s.num ? 'linear-gradient(135deg, #00d2ff, #3a7bd5)' : 'rgba(255,255,255,0.08)',
-                  color: step >= s.num ? '#fff' : '#555',
-                  border: step === s.num ? '2px solid #00d2ff' : '2px solid transparent',
-                  boxShadow: step === s.num ? '0 0 16px rgba(0,210,255,0.5)' : 'none',
-                  transition: 'all 0.4s ease',
-                }}>
-                  {step > s.num ? '\u2713' : s.num}
-                </div>
-                <span style={{ fontSize: 10, color: step >= s.num ? '#00d2ff' : '#555', letterSpacing: 0.5, textTransform: 'uppercase', fontWeight: 600 }}>{s.label}</span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div style={{
-                  flex: 1, height: 2, margin: '0 8px', marginBottom: 22, alignSelf: 'flex-start', marginTop: 18,
-                  background: step > s.num ? 'linear-gradient(90deg, #00d2ff, #3a7bd5)' : 'rgba(255,255,255,0.08)',
-                  borderRadius: 1, transition: 'background 0.4s ease',
-                }} />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-
-        {/* Card */}
-        <div style={{ ...cardStyle, animation: `slideIn${animDir === 'forward' ? 'Right' : 'Left'} 0.35s ease` }}>
-
-          {/* Step 1: GST Number */}
-          {step === 1 && (
-            <>
-              <h2 style={headingStyle}>Company Registration</h2>
-              <p style={subTextStyle}>Enter your GST Identification Number to get started</p>
-              <div style={formGroupStyle}>
-                <label style={labelStyle}>GSTIN (15 Characters)</label>
-                <input
-                  style={inputStyle}
-                  type="text"
-                  maxLength={15}
-                  value={gstin}
-                  onChange={e => setGstin(e.target.value.toUpperCase())}
-                  placeholder="e.g. 22AAAAA0000A1Z5"
-                />
-                <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>{gstin.length}/15 characters</div>
-              </div>
-              {error && <div style={errorStyle}>{error}</div>}
-              <button style={primaryBtnStyle} onClick={handleVerifyGST} disabled={loading}>
-                {loading ? <span style={spinnerWrapStyle}><span style={spinnerStyle} /> Verifying...</span> : 'Verify GST'}
-              </button>
-            </>
-          )}
-
-          {/* Step 2: Company Details */}
-          {step === 2 && gstData && (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <h2 style={{ ...headingStyle, marginBottom: 0 }}>Company Details</h2>
-                <span style={verifiedBadgeStyle}>&#10003; Verified</span>
-              </div>
-              <div style={detailsGridStyle}>
-                <DetailItem label="GSTIN" value={gstData.gstin} />
-                <DetailItem label="Legal Name" value={gstData.legalName} />
-                <DetailItem label="Trade Name" value={gstData.tradeName} />
-                <DetailItem label="Business Type" value={gstData.businessType} />
-                <DetailItem label="Registration Date" value={gstData.registrationDate} />
-                <DetailItem label="GST Status" value={gstData.gstStatus} />
-                <DetailItem label="Address" value={gstData.address} full />
-                <DetailItem label="Pincode" value={gstData.pincode} />
-                <DetailItem label="State Jurisdiction" value={gstData.stateJurisdiction} />
-                <DetailItem label="Central Jurisdiction" value={gstData.centralJurisdiction} />
-                <DetailItem label="Contact Name" value={gstData.contactName} />
-                <DetailItem label="Contact Mobile" value={gstData.contactMobile} />
-                <DetailItem label="Contact Email" value={gstData.contactEmail} />
-                {gstData.natureOfBusiness && gstData.natureOfBusiness.length > 0 && (
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <span style={detailLabelStyle}>Nature of Business</span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                      {gstData.natureOfBusiness.map((n, i) => (
-                        <span key={i} style={tagStyle}>{n}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {gstData.members && gstData.members.length > 0 && (
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <span style={detailLabelStyle}>Members / Directors</span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                      {gstData.members.map((m, i) => (
-                        <span key={i} style={tagStyle}>{typeof m === 'string' ? m : m.name || JSON.stringify(m)}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {error && <div style={errorStyle}>{error}</div>}
-              <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-                <button style={outlineBtnStyle} onClick={() => { setGstData(null); setGstin(''); goToStep(1, 'backward'); }}>Try Different GST</button>
-                <button style={{ ...primaryBtnStyle, flex: 1 }} onClick={() => goToStep(3)}>Confirm &amp; Continue</button>
-              </div>
-            </>
-          )}
-
-          {/* Step 3: Mobile Number */}
-          {step === 3 && (
-            <>
-              <h2 style={headingStyle}>Registered Mobile</h2>
-              <p style={subTextStyle}>Enter the mobile number registered with your company</p>
-              <div style={formGroupStyle}>
-                <label style={labelStyle}>Mobile Number</label>
-                <input
-                  style={inputStyle}
-                  type="tel"
-                  maxLength={10}
-                  value={mobile}
-                  onChange={e => setMobile(e.target.value.replace(/\D/g, ''))}
-                  placeholder="10-digit mobile number"
-                />
-              </div>
-              {error && <div style={errorStyle}>{error}</div>}
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button style={outlineBtnStyle} onClick={() => goToStep(2, 'backward')}>Back</button>
-                <button style={{ ...primaryBtnStyle, flex: 1 }} onClick={() => {
-                  if (!mobile || mobile.length !== 10) { setError('Please enter a valid 10-digit mobile number'); return; }
-                  goToStep(4);
-                }}>Continue</button>
-              </div>
-            </>
-          )}
-
-          {/* Step 4: Username & Password */}
-          {step === 4 && (
-            <>
-              <h2 style={headingStyle}>Create Account</h2>
-              <p style={subTextStyle}>Set up your login credentials</p>
-              <div style={formGroupStyle}>
-                <label style={labelStyle}>Username</label>
-                <input style={inputStyle} type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="Choose a username" />
-              </div>
-              <div style={formGroupStyle}>
-                <label style={labelStyle}>Password</label>
-                <input style={inputStyle} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Create a password" />
-              </div>
-              <div style={formGroupStyle}>
-                <label style={labelStyle}>Confirm Password</label>
-                <input style={inputStyle} type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter password" />
-              </div>
-              {error && <div style={errorStyle}>{error}</div>}
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button style={outlineBtnStyle} onClick={() => goToStep(3, 'backward')}>Back</button>
-                <button style={{ ...primaryBtnStyle, flex: 1 }} onClick={handleCompleteRegistration} disabled={loading}>
-                  {loading ? <span style={spinnerWrapStyle}><span style={spinnerStyle} /> Registering...</span> : 'Complete Registration'}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Back to Login link */}
-        <div style={{ marginTop: 20, zIndex: 1 }}>
-          <span style={backLinkStyle} onClick={onBackToLogin}>&#8592; Back to Login</span>
-        </div>
+    <div style={pageBg}>
+      {/* Logo */}
+      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+        <img src="/wizone-logo.png" alt="Wizone" style={{ height: 50, marginBottom: 6 }} />
+        <div style={{ fontSize: 14, color: '#1E293B', letterSpacing: 2, fontWeight: 800 }}>EA to M.D</div>
       </div>
 
-      <div className="anime-footer">EA to M.D &mdash; <b>WIZONE</b></div>
+      {/* Step Indicator */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 0, marginBottom: 24, width: '100%', maxWidth: 520, padding: '0 20px' }}>
+        {STEPS.map((s, i) => (
+          <React.Fragment key={s.num}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 14, fontWeight: 700,
+                background: step >= s.num ? 'linear-gradient(135deg, #2563EB, #3B82F6)' : '#E2E8F0',
+                color: step >= s.num ? '#fff' : '#94A3B8',
+                boxShadow: step === s.num ? '0 0 0 4px rgba(59,130,246,0.2)' : 'none',
+                transition: 'all 0.3s',
+              }}>
+                {step > s.num ? '\u2713' : s.num}
+              </div>
+              <span style={{ fontSize: 9, color: step >= s.num ? '#2563EB' : '#94A3B8', letterSpacing: 0.5, textTransform: 'uppercase', fontWeight: 700, textAlign: 'center', maxWidth: 80 }}>{s.label}</span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div style={{ flex: 1, height: 3, margin: '18px 6px 0', background: step > s.num ? 'linear-gradient(90deg, #2563EB, #3B82F6)' : '#E2E8F0', borderRadius: 2, transition: 'all 0.3s' }} />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
 
-      {/* Keyframe animations */}
-      <style>{`
-        @keyframes slideInRight {
-          from { opacity: 0; transform: translateX(40px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes slideInLeft {
-          from { opacity: 0; transform: translateX(-40px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+      {/* Card */}
+      <div style={card}>
+        {/* Step 1 */}
+        {step === 1 && (
+          <>
+            <h2 style={heading}>Company Registration</h2>
+            <p style={subText}>Enter your GST Identification Number to get started</p>
+            <div style={formGroup}>
+              <label style={label}>GSTIN (15 Characters)</label>
+              <input style={input} type="text" maxLength={15} value={gstin} onChange={e => setGstin(e.target.value.toUpperCase())} placeholder="e.g. 22AAAAA0000A1Z5" />
+              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>{gstin.length}/15 characters</div>
+            </div>
+            {error && <div style={errStyle}>{error}</div>}
+            <button style={primaryBtn} onClick={handleVerifyGST} disabled={loading}>
+              {loading ? 'Verifying...' : 'VERIFY GST'}
+            </button>
+          </>
+        )}
+
+        {/* Step 2 */}
+        {step === 2 && gstData && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h2 style={{ ...heading, marginBottom: 0, textAlign: 'left' }}>Company Details</h2>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981', background: '#ECFDF5', padding: '4px 12px', borderRadius: 20, border: '1px solid #D1FAE5' }}>&#10003; Verified</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', marginBottom: 16 }}>
+              <DI label="GSTIN" value={gstData.gstin} />
+              <DI label="Legal Name" value={gstData.legalName} />
+              <DI label="Trade Name" value={gstData.tradeName} />
+              <DI label="Business Type" value={gstData.businessType} />
+              <DI label="Registration Date" value={gstData.registrationDate} />
+              <DI label="GST Status" value={gstData.gstStatus} />
+              <DI label="Address" value={gstData.address} full />
+              <DI label="State Jurisdiction" value={gstData.stateJurisdiction} full />
+              {gstData.members?.length > 0 && (
+                <div style={{ gridColumn: '1/-1' }}>
+                  <span style={detailLabel}>Directors</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                    {gstData.members.map((m, i) => <span key={i} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, background: '#EFF6FF', color: '#2563EB', fontWeight: 600 }}>{typeof m === 'string' ? m : m.name}</span>)}
+                  </div>
+                </div>
+              )}
+            </div>
+            {error && <div style={errStyle}>{error}</div>}
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button style={outlineBtn} onClick={() => { setGstData(null); setGstin(''); goToStep(1); }}>Try Different GST</button>
+              <button style={{ ...primaryBtn, flex: 1 }} onClick={() => goToStep(3)}>Confirm & Continue</button>
+            </div>
+          </>
+        )}
+
+        {/* Step 3 */}
+        {step === 3 && (
+          <>
+            <h2 style={heading}>Registered Mobile</h2>
+            <p style={subText}>Enter the mobile number registered with your company</p>
+            <div style={formGroup}>
+              <label style={label}>Mobile Number</label>
+              <input style={input} type="tel" maxLength={10} value={mobile} onChange={e => setMobile(e.target.value.replace(/\D/g, ''))} placeholder="10-digit mobile number" />
+            </div>
+            {error && <div style={errStyle}>{error}</div>}
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button style={outlineBtn} onClick={() => goToStep(2)}>Back</button>
+              <button style={{ ...primaryBtn, flex: 1 }} onClick={() => { if (!mobile || mobile.length !== 10) { setError('Enter valid 10-digit number'); return; } goToStep(4); }}>Continue</button>
+            </div>
+          </>
+        )}
+
+        {/* Step 4 */}
+        {step === 4 && (
+          <>
+            <h2 style={heading}>Create Account</h2>
+            <p style={subText}>Set up your login credentials</p>
+            <div style={formGroup}>
+              <label style={label}>Username</label>
+              <input style={input} type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="Choose a username" />
+            </div>
+            <div style={formGroup}>
+              <label style={label}>Password</label>
+              <input style={input} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Create a password" />
+            </div>
+            <div style={formGroup}>
+              <label style={label}>Confirm Password</label>
+              <input style={input} type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter password" />
+            </div>
+            {error && <div style={errStyle}>{error}</div>}
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button style={outlineBtn} onClick={() => goToStep(3)}>Back</button>
+              <button style={{ ...primaryBtn, flex: 1 }} onClick={handleCompleteRegistration} disabled={loading}>
+                {loading ? 'Registering...' : 'Complete Registration'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Back to Login */}
+      <div style={{ marginTop: 20 }}>
+        <span onClick={onBackToLogin} style={{ color: '#2563EB', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>&#8592; Back to Login</span>
+      </div>
+
+      {/* Footer */}
+      <div style={{ marginTop: 16, color: '#94A3B8', fontSize: 11 }}>
+        &copy; {new Date().getFullYear()} Wizone AI Labs Pvt Ltd
+      </div>
     </div>
   );
 }
 
-function DetailItem({ label, value, full }) {
+function DI({ label: l, value: v, full }) {
   return (
-    <div style={{ gridColumn: full ? '1 / -1' : undefined }}>
-      <span style={detailLabelStyle}>{label}</span>
-      <div style={detailValueStyle}>{value || '-'}</div>
+    <div style={{ gridColumn: full ? '1/-1' : undefined }}>
+      <span style={detailLabel}>{l}</span>
+      <div style={{ fontSize: 13, color: '#1E293B', fontWeight: 500 }}>{v || '-'}</div>
     </div>
   );
 }
 
-// --- Inline styles to match anime blue theme ---
-
-const cardStyle = {
-  background: 'rgba(10,25,47,0.6)',
-  backdropFilter: 'blur(25px)',
-  WebkitBackdropFilter: 'blur(25px)',
-  padding: '2rem 2.2rem',
-  borderRadius: 25,
-  width: 480,
-  maxWidth: '94vw',
-  border: '1px solid rgba(0,210,255,0.3)',
-  boxShadow: '0 0 50px rgba(0,210,255,0.1), 0 8px 32px rgba(0,0,0,0.4)',
-  zIndex: 1,
+const pageBg = {
+  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+  background: 'linear-gradient(135deg, #e8edf5 0%, #c9d6e8 50%, #e8edf5 100%)',
+  backgroundSize: '400% 400%', animation: 'gradientShift 12s ease infinite',
+  zIndex: 20000, overflow: 'auto', padding: '20px',
 };
 
-const headingStyle = {
-  color: '#fff',
-  margin: '0 0 0.5rem 0',
-  fontWeight: 700,
-  textAlign: 'center',
-  letterSpacing: 1,
-  textShadow: '0 0 10px rgba(0,210,255,0.5)',
-  fontSize: 20,
+const card = {
+  background: '#FFFFFF', borderRadius: 20, padding: '28px 32px',
+  width: 500, maxWidth: '94vw', boxShadow: '0 8px 40px rgba(0,0,0,0.08)',
+  border: '1px solid #E2E8F0',
 };
 
-const subTextStyle = {
-  color: '#8892b0',
-  fontSize: 12,
-  textAlign: 'center',
-  marginBottom: 20,
-  letterSpacing: 0.5,
+const heading = { fontSize: 20, fontWeight: 800, color: '#1E293B', marginBottom: 4, textAlign: 'center' };
+const subText = { fontSize: 12, color: '#94A3B8', textAlign: 'center', marginBottom: 20 };
+const formGroup = { marginBottom: 16 };
+const label = { display: 'block', fontSize: 10, fontWeight: 700, color: '#64748B', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 };
+const detailLabel = { display: 'block', fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 };
+
+const input = {
+  width: '100%', padding: '12px 16px', background: '#F8FAFC',
+  border: '1.5px solid #E2E8F0', borderRadius: 10, color: '#1E293B',
+  outline: 'none', fontSize: 14, fontFamily: 'inherit', fontWeight: 500,
+  transition: 'border-color 0.2s',
 };
 
-const formGroupStyle = {
-  marginBottom: '1rem',
+const primaryBtn = {
+  width: '100%', height: 48, background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)',
+  borderRadius: 10, border: 'none', color: '#fff', fontSize: 14, fontWeight: 700,
+  cursor: 'pointer', fontFamily: 'inherit', letterSpacing: 1, textTransform: 'uppercase',
+  boxShadow: '0 4px 15px rgba(59,130,246,0.3)', transition: 'all 0.3s',
 };
 
-const labelStyle = {
-  display: 'block',
-  color: '#8892b0',
-  fontSize: '0.75rem',
-  marginBottom: 8,
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  fontWeight: 600,
+const outlineBtn = {
+  padding: '12px 20px', background: '#fff', border: '1.5px solid #E2E8F0',
+  borderRadius: 10, color: '#64748B', fontSize: 13, fontWeight: 600,
+  cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
 };
 
-const inputStyle = {
-  width: '100%',
-  padding: '14px 16px',
-  background: 'rgba(0,0,0,0.3)',
-  border: '1px solid rgba(0,210,255,0.2)',
-  borderRadius: 12,
-  color: '#e0e0e0',
-  fontSize: 14,
-  outline: 'none',
-  transition: 'border-color 0.3s, box-shadow 0.3s',
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
-};
-
-const primaryBtnStyle = {
-  width: '100%',
-  padding: '14px',
-  background: 'linear-gradient(135deg, #00d2ff, #3a7bd5)',
-  border: 'none',
-  borderRadius: 12,
-  fontWeight: 700,
-  color: '#fff',
-  cursor: 'pointer',
-  textTransform: 'uppercase',
-  fontFamily: 'inherit',
-  fontSize: 13,
-  letterSpacing: 1.5,
-  transition: 'all 0.3s ease',
-};
-
-const outlineBtnStyle = {
-  padding: '14px 20px',
-  background: 'transparent',
-  border: '1px solid rgba(0,210,255,0.4)',
-  borderRadius: 12,
-  fontWeight: 600,
-  color: '#00d2ff',
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-  fontSize: 12,
-  letterSpacing: 1,
-  transition: 'all 0.3s ease',
-};
-
-const errorStyle = {
-  color: '#ff4d4d',
-  fontSize: 12,
-  marginBottom: 12,
-  textAlign: 'center',
-  textShadow: '0 0 10px rgba(255,77,77,0.3)',
-};
-
-const backLinkStyle = {
-  color: '#00d2ff',
-  fontSize: 13,
-  cursor: 'pointer',
-  letterSpacing: 0.5,
-  transition: 'color 0.3s',
-};
-
-const stepIndicatorStyle = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  justifyContent: 'center',
-  marginBottom: 28,
-  width: 480,
-  maxWidth: '94vw',
-  zIndex: 1,
-};
-
-const verifiedBadgeStyle = {
-  background: 'rgba(16,185,129,0.15)',
-  color: '#10b981',
-  border: '1px solid rgba(16,185,129,0.3)',
-  borderRadius: 20,
-  padding: '4px 14px',
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: 0.5,
-};
-
-const detailsGridStyle = {
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: '12px 16px',
-  maxHeight: 380,
-  overflowY: 'auto',
-  paddingRight: 4,
-};
-
-const detailLabelStyle = {
-  display: 'block',
-  color: '#5a6a8a',
-  fontSize: 10,
-  textTransform: 'uppercase',
-  letterSpacing: 0.8,
-  fontWeight: 600,
-  marginBottom: 2,
-};
-
-const detailValueStyle = {
-  color: '#e0e0e0',
-  fontSize: 13,
-  wordBreak: 'break-word',
-};
-
-const tagStyle = {
-  background: 'rgba(0,210,255,0.1)',
-  color: '#00d2ff',
-  border: '1px solid rgba(0,210,255,0.2)',
-  borderRadius: 6,
-  padding: '3px 10px',
-  fontSize: 11,
-  fontWeight: 500,
-};
-
-const spinnerWrapStyle = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 8,
-};
-
-const spinnerStyle = {
-  display: 'inline-block',
-  width: 16,
-  height: 16,
-  border: '2px solid rgba(255,255,255,0.3)',
-  borderTopColor: '#fff',
-  borderRadius: '50%',
-  animation: 'spin 0.7s linear infinite',
+const errStyle = {
+  color: '#EF4444', fontSize: 12, marginBottom: 12, textAlign: 'center',
+  fontWeight: 600, background: '#FEF2F2', padding: '8px 12px', borderRadius: 8,
 };

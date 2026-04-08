@@ -10,7 +10,9 @@ const RATING_BG = {
   Excellent: '#ECFDF5', Good: '#F0FDF4', Average: '#FFFBEB', Poor: '#FFF7ED', Bad: '#FEF2F2',
 };
 
-function formatDateISO(d) { return d.toISOString().split('T')[0]; }
+function formatDateISO(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 function displayDate(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
