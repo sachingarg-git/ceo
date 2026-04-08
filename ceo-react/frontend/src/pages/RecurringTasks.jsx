@@ -61,6 +61,7 @@ export default function RecurringTasks() {
 
   const [selected, setSelected] = useState(new Set());
   const [newRow, setNewRow] = useState(null); // unsaved new row
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const tbodyRef = useRef(null);
 
@@ -414,7 +415,7 @@ export default function RecurringTasks() {
                         </td>
                         {/* 13: Actions (delete) */}
                         <td data-row={idx} data-col={13} style={{ textAlign: 'center' }}>
-                          <button className="ss-del" title="Delete" onClick={() => handleDelete(row.id)}>&times;</button>
+                          <button className="ss-del" title="Delete" onClick={() => setDeleteConfirmId(row.id)}>&times;</button>
                         </td>
                       </tr>
                     );
@@ -507,6 +508,39 @@ export default function RecurringTasks() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      <div className={'modal-overlay' + (deleteConfirmId ? ' show' : '')} onClick={e => { if (e.target === e.currentTarget) setDeleteConfirmId(null); }}>
+        <div className="modal" style={{ maxWidth: 440 }}>
+          <div className="modal-header">
+            <h3>Delete Recurring Task</h3>
+            <button className="modal-close" onClick={() => setDeleteConfirmId(null)}>&times;</button>
+          </div>
+          <div className="modal-body">
+            {(() => {
+              const task = rows.find(r => r.id === deleteConfirmId);
+              if (!task) return <p>Are you sure you want to delete this task?</p>;
+              return (
+                <div>
+                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: 14 }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: '#DC2626', marginBottom: 4 }}>&#9888; This action cannot be undone</div>
+                    <div style={{ fontSize: 11, color: '#7F1D1D' }}>This recurring task and all its scheduled occurrences will be permanently removed.</div>
+                  </div>
+                  <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '12px 16px' }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{task.name || task.task || '-'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>Frequency: {task.frequency || '-'} {task.weekday ? '| Day: ' + task.weekday : ''} {task.timeSlot ? '| Time: ' + task.timeSlot : ''}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Priority: {task.priority || '-'} | Status: {task.status || '-'}</div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-outline" onClick={() => setDeleteConfirmId(null)}>Cancel</button>
+            <button className="btn btn-danger" onClick={() => { handleDelete(deleteConfirmId); setDeleteConfirmId(null); }}>Delete Task</button>
+          </div>
         </div>
       </div>
     </div>
