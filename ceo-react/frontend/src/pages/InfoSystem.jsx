@@ -25,6 +25,7 @@ export default function InfoSystem() {
   const [editItem, setEditItem] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [selected, setSelected] = useState(new Set());
 
   useEffect(() => {
     loadData();
@@ -53,6 +54,24 @@ export default function InfoSystem() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function toggleSelect(id) { setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; }); }
+  function toggleSelectAll(checked) { setSelected(checked ? new Set(filtered.map(r => r._qcId || r.id)) : new Set()); }
+
+  async function bulkSendToQuickCapture() {
+    const qcIds = [];
+    for (const id of selected) {
+      const row = allRows.find(r => (r._qcId || r.id) === id);
+      if (row && row._source === 'qc' && row._qcId) qcIds.push(row._qcId);
+    }
+    if (qcIds.length === 0) { showToast('Only QC-sourced tasks can be moved back', 'warning'); return; }
+    let moved = 0;
+    for (const id of qcIds) {
+      try { await api.updateTask(id, { sendTo: 'Someday List' }); moved++; } catch {}
+    }
+    showToast(`${moved} task${moved > 1 ? 's' : ''} moved to Quick Capture`, 'success');
+    setSelected(new Set()); loadData();
   }
 
   /** Combine info-system native rows and QC-sourced rows into a unified list */
@@ -176,7 +195,6 @@ export default function InfoSystem() {
     return (
       <div>
         <div className="page-header">
-          <h1>Information System</h1>
         </div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <div className="spinner" />
@@ -189,10 +207,7 @@ export default function InfoSystem() {
   return (
     <div>
       <div className="page-header">
-        <div>
-          <h1>Information System</h1>
-          <p className="page-subtitle">Knowledge base and reference entries</p>
-        </div>
+        <div></div>
         <div className="page-header-actions">
           <button className="btn btn-outline btn-sm" onClick={loadData}>
             Refresh
@@ -252,12 +267,30 @@ export default function InfoSystem() {
         </div>
       </div>
 
+      {/* Toolbar */}
+      {selected.size > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 16px', background: 'var(--card-bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
+          <input type="checkbox" className="ss-check" checked={selected.size === filtered.length} onChange={e => toggleSelectAll(e.target.checked)} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{selected.size} selected</span>
+          <button style={{
+            padding: '6px 14px', fontSize: 11, fontWeight: 600, border: '1.5px solid var(--primary)',
+            color: 'var(--primary)', background: 'var(--primary-light)', borderRadius: 8, cursor: 'pointer',
+            transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 4,
+          }}
+            onMouseOver={e => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseOut={e => { e.currentTarget.style.background = 'var(--primary-light)'; e.currentTarget.style.color = 'var(--primary)'; }}
+            onClick={bulkSendToQuickCapture}
+          >&#8592; Send to Quick Capture</button>
+        </div>
+      )}
+
       {/* Data Table */}
       <div className="glass-card">
         <div className="table-container" style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
               <tr>
+                <th style={{ width: 30 }}><input type="checkbox" className="ss-check" checked={selected.size > 0 && selected.size === filtered.length} onChange={e => toggleSelectAll(e.target.checked)} /></th>
                 <th style={{ width: 45 }}>#</th>
                 <th style={{ width: 120 }}>Created</th>
                 <th>Description / Title</th>
@@ -272,7 +305,7 @@ export default function InfoSystem() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: 32, opacity: 0.5 }}>
+                  <td colSpan={10} style={{ textAlign: 'center', padding: 32, opacity: 0.5 }}>
                     No entries found.
                   </td>
                 </tr>
@@ -284,6 +317,7 @@ export default function InfoSystem() {
                       key={isQc ? `qc-${item._qcId || idx}` : `native-${item.id || idx}`}
                       style={isQc ? { background: 'rgba(33, 150, 243, 0.04)' } : undefined}
                     >
+                      <td style={{ textAlign: 'center' }}><input type="checkbox" className="ss-check" checked={selected.has(item._qcId || item.id)} onChange={() => toggleSelect(item._qcId || item.id)} /></td>
                       <td>{idx + 1}</td>
                       <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
                         {formatDate(item._displayDate)}

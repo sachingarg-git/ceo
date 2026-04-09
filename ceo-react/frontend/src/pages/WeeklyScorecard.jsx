@@ -91,7 +91,7 @@ export default function WeeklyScorecard() {
   if (loading) {
     return (
       <div>
-        <div className="page-header"><h1>Weekly Scorecard</h1></div>
+        <div className="page-header"></div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <div className="spinner" />
           <p style={{ marginTop: '1rem', opacity: 0.7 }}>Loading...</p>
@@ -103,7 +103,7 @@ export default function WeeklyScorecard() {
   if (!data) {
     return (
       <div>
-        <div className="page-header"><h1>Weekly Scorecard</h1></div>
+        <div className="page-header"></div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <p>Unable to load scorecard data.</p>
           <button className="btn btn-primary" onClick={loadData}>Retry</button>
@@ -117,7 +117,6 @@ export default function WeeklyScorecard() {
   return (
     <div>
       <div className="page-header">
-        <h1>Weekly Scorecard {year ? `- ${year}` : ''}</h1>
         <button className="btn btn-outline" onClick={loadData}>Refresh</button>
       </div>
 

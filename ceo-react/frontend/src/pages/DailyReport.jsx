@@ -110,7 +110,7 @@ export default function DailyReport() {
   if (loading) {
     return (
       <div>
-        <div className="page-header"><div><h2>Daily Report</h2></div></div>
+        <div className="page-header"><div></div></div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <div className="spinner" />
           <p style={{ marginTop: '1rem', opacity: 0.7 }}>Loading...</p>
@@ -122,7 +122,7 @@ export default function DailyReport() {
   if (!data) {
     return (
       <div>
-        <div className="page-header"><div><h2>Daily Report</h2></div></div>
+        <div className="page-header"><div></div></div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <p>Unable to load report data.</p>
           <button className="btn btn-primary" onClick={loadData}>Retry</button>
@@ -136,7 +136,7 @@ export default function DailyReport() {
   return (
     <div>
       <div className="page-header">
-        <div><h2>Daily Report</h2><p>Monthly task tracking and performance</p></div>
+        <div></div>
         <button className="btn btn-outline btn-sm" onClick={loadData}>Refresh</button>
       </div>
 

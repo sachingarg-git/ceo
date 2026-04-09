@@ -2,54 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useApp } from '../App';
 
-const ICONS = {
-  capture: '\u26A1', someday: '\uD83D\uDCCB', info: '\uD83D\uDCDA', high: '\uD83D\uDD25',
-  tasks: '\uD83D\uDCCA', scheduled: '\uD83D\uDCC5', waiting: '\u23F3', completed: '\u2705',
-  overdue: '\u26A0\uFE0F', recurring: '\uD83D\uDD04', dueToday: '\uD83D\uDEA8', dueTomorrow: '\uD83D\uDD52',
-  completion: '\uD83C\uDFC6', days: '\uD83D\uDCC8',
-};
-
 export default function Dashboard() {
   const { showToast, setCurrentPage, user } = useApp();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [animate, setAnimate] = useState(false);
+  const [qcRows, setQcRows] = useState([]);
+  const [popup, setPopup] = useState(null); // { title, items }
 
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
     setLoading(true); setError(false); setAnimate(false);
     try {
-      const res = await api.getDashboard();
+      const [res, qcRes] = await Promise.all([api.getDashboard(), api.getQuickCapture()]);
       if (res.success) { setData(res); setTimeout(() => setAnimate(true), 100); }
-      else { setError(true); showToast('Failed to load dashboard', 'error'); }
-    } catch { setError(true); showToast('Failed to load dashboard', 'error'); }
+      else { setError(true); }
+      if (qcRes.success) setQcRows(qcRes.rows || []);
+    } catch { setError(true); }
     setLoading(false);
   }
 
   const today = new Date();
-  const greeting = today.getHours() < 12 ? 'Good Morning' : today.getHours() < 17 ? 'Good Afternoon' : 'Good Evening';
-  const dateStr = today.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  const greeting = today.getHours() < 12 ? 'Good morning' : today.getHours() < 17 ? 'Good afternoon' : 'Good evening';
+  const dateStr = today.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
 
   if (loading) {
-    return (
-      <div>
-        <div className="page-header"><div><h2>Dashboard</h2></div></div>
-        <div style={{ textAlign: 'center', padding: 80 }}><div className="spinner" /><p style={{ marginTop: 12, color: 'var(--muted)', fontSize: 12 }}>Loading dashboard...</p></div>
-      </div>
-    );
+    return <div style={{ textAlign: 'center', padding: 80 }}><div className="spinner" /></div>;
   }
 
   if (error || !data) {
     return (
-      <div>
-        <div className="page-header"><div><h2>Dashboard</h2></div></div>
-        <div className="glass-card" style={{ textAlign: 'center', padding: 60 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>&#128533;</div>
-          <p style={{ color: 'var(--muted)', marginBottom: 16 }}>Unable to load dashboard data.</p>
-          <button className="btn btn-primary" onClick={loadData}>Try Again</button>
-        </div>
+      <div style={{ textAlign: 'center', padding: 60 }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>&#128533;</div>
+        <p style={{ color: 'var(--muted)', marginBottom: 16 }}>Unable to load dashboard</p>
+        <button className="btn btn-primary" onClick={loadData}>Retry</button>
       </div>
     );
   }
@@ -57,219 +45,192 @@ export default function Dashboard() {
   const qc = data.quickCapture || {};
   const sl = data.somedayList || {};
   const rt = data.recurringTasks || {};
-  const mr = data.monthlyReport || {};
-  const todayTasks = sl.scheduledToday || 0;
   const totalActive = (qc.total || 0) + (rt.active || 0);
+  const todayISO = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
 
-  const kpiRows = [
-    {
-      title: 'QUICK CAPTURE',
-      cards: [
-        { label: 'Total Captures', value: qc.total || 0, icon: ICONS.capture, bg: 'linear-gradient(135deg, #0D9488 0%, #14B8A6 100%)' },
-        { label: 'To Someday List', value: qc.toSomeday || 0, icon: ICONS.someday, bg: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)' },
-        { label: 'To Info System', value: qc.toInfoSystem || 0, icon: ICONS.info, bg: 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)' },
-        { label: 'High Priority', value: qc.highPriority || 0, icon: ICONS.high, bg: 'linear-gradient(135deg, #E11D48 0%, #F43F5E 100%)' },
-      ]
-    },
-    {
-      title: 'SOMEDAY LIST & TODAY',
-      cards: [
-        { label: 'Total SL Tasks', value: sl.total || 0, icon: ICONS.tasks, bg: 'linear-gradient(135deg, #0D9488 0%, #14B8A6 100%)' },
-        { label: 'Scheduled Today', value: sl.scheduledToday || 0, icon: ICONS.scheduled, bg: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)' },
-        { label: 'Waiting', value: sl.waiting || 0, icon: ICONS.waiting, bg: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)' },
-        { label: 'Completed Today', value: sl.completed || 0, icon: ICONS.completed, bg: 'linear-gradient(135deg, #059669 0%, #10B981 100%)' },
-        { label: 'Overdue', value: sl.overdue || 0, icon: ICONS.overdue, bg: 'linear-gradient(135deg, #E11D48 0%, #F43F5E 100%)' },
-      ]
-    },
-    {
-      title: 'RECURRING & PERFORMANCE',
-      cards: [
-        { label: 'Active Recurring', value: rt.active || 0, icon: ICONS.recurring, bg: 'linear-gradient(135deg, #0D9488 0%, #14B8A6 100%)' },
-        { label: 'Due Today', value: rt.dueToday || 0, icon: ICONS.dueToday, bg: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)' },
-        { label: 'Due Tomorrow', value: rt.dueTomorrow || 0, icon: ICONS.dueTomorrow, bg: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)' },
-        { label: '30-Day Completion', value: `${mr.avgCompletion || 0}%`, icon: ICONS.completion, bg: 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)' },
-        { label: 'Days Tracked', value: mr.daysTracked || 0, icon: ICONS.days, bg: 'linear-gradient(135deg, #E11D48 0%, #F43F5E 100%)' },
-      ]
-    },
-  ];
+  // Today's scheduled tasks from QC
+  const todayTasks = qcRows.filter(r => r.schedDate === todayISO && r.slStatus !== 'Completed').slice(0, 5);
+  // Recent captures (last 3)
+  const recentCaptures = qcRows.slice(-3).reverse();
+
+  // Status popup data builders
+  const overdueRows = qcRows.filter(r => r.schedDate && r.schedDate < todayISO && r.slStatus !== 'Completed');
+  const waitingRows = qcRows.filter(r => r.slStatus === 'Waiting');
+  const completedTodayRows = qcRows.filter(r => r.slStatus === 'Completed' && r.doneDate === todayISO);
+  const somedayRows = qcRows.filter(r => r.sendTo === 'Someday List' && r.slStatus !== 'Completed');
+
+  function openPopup(label, rows) {
+    setPopup({ title: label, items: rows });
+  }
+
+  const card = { background: 'var(--card-bg)', borderRadius: 16, padding: '20px 24px', color: 'var(--text)', border: '1px solid var(--border)', boxShadow: 'var(--shadow)' };
 
   return (
     <div>
       {/* Hero Header */}
       <div style={{
-        background: 'linear-gradient(135deg, #0D9488 0%, #2563EB 50%, #7C3AED 100%)',
-        borderRadius: 20, padding: '32px 36px', marginBottom: 28, color: 'white',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        boxShadow: '0 8px 32px rgba(13,110,110,0.2)',
-        position: 'relative', overflow: 'hidden',
-        animation: animate ? 'fadeInDown 0.5s ease' : 'none',
+        ...card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20,
+        opacity: animate ? 1 : 0, transform: animate ? 'translateY(0)' : 'translateY(10px)', transition: 'all 0.4s ease',
       }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>{greeting}, {user?.name || 'CEO'}</div>
-          <div style={{ fontSize: 12, opacity: 0.8 }}>{dateStr}</div>
-          <div style={{ marginTop: 12, display: 'flex', gap: 20, fontSize: 12 }}>
-            <span><strong>{totalActive}</strong> active tasks</span>
-            <span><strong>{todayTasks}</strong> scheduled today</span>
-            <span><strong>{rt.dueToday || 0}</strong> recurring due</span>
-          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>{greeting}, {user?.name || 'CEO'}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{dateStr} &middot; {totalActive} active tasks</div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', backdropFilter: 'blur(8px)' }} onClick={loadData}>&#8635; Refresh</button>
-          <button className="btn btn-sm" style={{ background: 'white', color: 'var(--primary)', fontWeight: 700 }} onClick={() => setCurrentPage('quick-capture')}>+ Quick Capture</button>
+          <button onClick={loadData} style={{ width: 42, height: 42, borderRadius: 12, border: '1px solid #E2E8F0', background: '#F8FAFC', color: 'var(--muted)', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: '0.2s' }}
+            onMouseOver={e => e.currentTarget.style.background = '#E2E8F0'} onMouseOut={e => e.currentTarget.style.background = '#F8FAFC'}>&#8635;</button>
+          <button onClick={() => setCurrentPage('quick-capture')} style={{ height: 42, borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #2563EB, #3B82F6)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, padding: '0 20px', display: 'flex', alignItems: 'center', gap: 6, transition: '0.2s', boxShadow: '0 2px 8px rgba(37,99,235,0.3)' }}
+            onMouseOver={e => e.currentTarget.style.opacity = '0.9'} onMouseOut={e => e.currentTarget.style.opacity = '1'}>+ Capture</button>
         </div>
       </div>
 
-      {/* KPI Sections */}
-      {kpiRows.map((section, si) => (
-        <div key={si} style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', letterSpacing: 1, marginBottom: 12, paddingLeft: 4, borderBottom: '2px solid var(--border)', paddingBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 4, height: 16, background: 'var(--primary-gradient)', borderRadius: 2 }} />
-            {section.title}
+      {/* KPI Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+        {[
+          { value: totalActive, label: 'Active tasks', dot: '#818CF8', bg: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)', numColor: '#4F46E5' },
+          { value: rt.dueToday || 0, label: 'Recurring due', dot: '#F59E0B', bg: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)', numColor: '#D97706' },
+          { value: sl.scheduledToday || 0, label: 'Scheduled today', dot: '#3B82F6', bg: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)', numColor: '#2563EB' },
+          { value: qc.highPriority || 0, label: 'High priority', dot: '#F43F5E', bg: 'linear-gradient(135deg, #FFF1F2 0%, #FFE4E6 100%)', numColor: '#E11D48' },
+        ].map((kpi, i) => (
+          <div key={i} style={{
+            ...card, background: kpi.bg, border: 'none',
+            opacity: animate ? 1 : 0, transform: animate ? 'translateY(0)' : 'translateY(16px)',
+            transition: `all 0.4s ease ${0.1 + i * 0.08}s`,
+          }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: kpi.dot, marginBottom: 10 }} />
+            <div style={{ fontSize: 36, fontWeight: 900, color: kpi.numColor, lineHeight: 1 }}>{kpi.value}</div>
+            <div style={{ fontSize: 12, color: kpi.numColor, opacity: 0.7, marginTop: 6, fontWeight: 600 }}>{kpi.label}</div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${section.cards.length}, 1fr)`, gap: 14 }}>
-            {section.cards.map((card, ci) => (
-              <div key={ci} style={{
-                background: card.bg, borderRadius: 16, padding: '20px 22px', position: 'relative', overflow: 'hidden',
-                cursor: 'default', boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
-                transform: animate ? 'translateY(0)' : 'translateY(20px)',
-                opacity: animate ? 1 : 0,
-                transition: `all 0.4s cubic-bezier(0.4,0,0.2,1) ${si * 0.1 + ci * 0.06}s`,
-              }}>
-                <div style={{ position: 'absolute', top: -10, right: -10, fontSize: 56, opacity: 0.15 }}>{card.icon}</div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>{card.label}</div>
-                <div style={{ fontSize: 32, fontWeight: 900, color: '#fff', lineHeight: 1 }}>{card.value}</div>
+        ))}
+      </div>
+
+      {/* Middle Row: Today's Tasks + Status Overview */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+        {/* Today's Tasks */}
+        <div style={{
+          ...card, opacity: animate ? 1 : 0, transform: animate ? 'translateY(0)' : 'translateY(16px)',
+          transition: 'all 0.4s ease 0.4s',
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 16 }}>Today's Tasks</div>
+          {todayTasks.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)', fontSize: 13 }}>No tasks scheduled for today</div>
+          ) : todayTasks.map((t, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderTop: i > 0 ? '1px solid #334155' : 'none' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{t.description}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                  {t.schedTimeFrom || ''}{t.batchType ? ' · ' + t.batchType : ''}{t.priority ? ' · ' + t.priority : ''}
+                </div>
+              </div>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6,
+                background: t.priority === 'High' ? 'rgba(244,63,94,0.15)' : 'rgba(59,130,246,0.15)',
+                color: t.priority === 'High' ? '#F43F5E' : '#60A5FA',
+              }}>{t.priority === 'High' ? 'High' : 'Pending'}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Status Overview */}
+        <div style={{
+          ...card, opacity: animate ? 1 : 0, transform: animate ? 'translateY(0)' : 'translateY(16px)',
+          transition: 'all 0.4s ease 0.5s',
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 16 }}>Status Overview</div>
+          {[
+            { label: 'Overdue', value: sl.overdue || overdueRows.length, dot: '#EF4444', rows: overdueRows },
+            { label: 'Waiting', value: sl.waiting || waitingRows.length, dot: '#F59E0B', rows: waitingRows },
+            { label: 'Completed today', value: sl.completed || completedTodayRows.length, dot: '#10B981', rows: completedTodayRows },
+            { label: 'Someday list', value: sl.total || somedayRows.length, dot: '#8B5CF6', rows: somedayRows },
+          ].map((item, i) => (
+            <div key={i} onClick={() => openPopup(item.label, item.rows)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 10, borderTop: i > 0 ? '1px solid var(--border)' : 'none', cursor: 'pointer', transition: 'background 0.15s' }}
+              onMouseOver={e => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'}
+              onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.dot }} />
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{item.label}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16, fontWeight: 800, color: item.value > 0 && item.dot === '#EF4444' ? '#EF4444' : 'var(--text)' }}>{item.value}</span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>›</span>
+              </div>
+            </div>
+          ))}
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>30-day completion</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#10B981' }}>0%</span>
+            </div>
+            <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ width: '0%', height: '100%', background: 'linear-gradient(90deg, #10B981, #34D399)', borderRadius: 2 }} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Captures */}
+      <div style={{
+        ...card, opacity: animate ? 1 : 0, transform: animate ? 'translateY(0)' : 'translateY(16px)',
+        transition: 'all 0.4s ease 0.6s',
+      }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 16 }}>Recent Captures</div>
+        {recentCaptures.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)', fontSize: 13 }}>No recent captures</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(recentCaptures.length, 3)}, 1fr)`, gap: 12 }}>
+            {recentCaptures.map((t, i) => (
+              <div key={i} style={{ background: 'var(--bg)', borderRadius: 12, padding: '16px 18px', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>{t.description}</div>
+                <span style={{
+                  fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
+                  background: t.sendTo === 'Someday List' ? 'rgba(139,92,246,0.15)' : t.priority === 'High' ? 'rgba(244,63,94,0.15)' : 'rgba(59,130,246,0.15)',
+                  color: t.sendTo === 'Someday List' ? '#A78BFA' : t.priority === 'High' ? '#F43F5E' : '#60A5FA',
+                }}>{t.priority === 'High' ? 'High' : t.sendTo === 'Someday List' ? 'Someday' : 'Info'}</span>
               </div>
             ))}
           </div>
-        </div>
-      ))}
+        )}
+      </div>
 
-      {/* Today Overview + Alerts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24, animation: animate ? 'fadeInUp 0.6s ease 0.3s both' : 'none' }}>
-        <div className="glass-card" style={{
-          padding: '28px 28px', borderLeft: '5px solid var(--info)',
-          transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', cursor: 'pointer',
-        }}
-          onClick={() => setCurrentPage('daily-schedule')}
-          onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(59,130,246,0.15)'; }}
-          onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = ''; }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h4 style={{ fontSize: 18, fontWeight: 800, color: 'var(--secondary)', letterSpacing: -0.3 }}>Today's Schedule</h4>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--info)', background: 'var(--info-bg)', padding: '4px 12px', borderRadius: 20 }}>View &rarr;</span>
+      {/* Status Popup Modal */}
+      {popup && (
+        <div onClick={() => setPopup(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 20, width: '100%', maxWidth: 560, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>{popup.title}</div>
+              <button onClick={() => setPopup(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: 'var(--muted)', lineHeight: 1 }}>✕</button>
+            </div>
+            {/* Body */}
+            <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
+              {popup.items.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13 }}>No tasks found</div>
+              ) : popup.items.map((t, i) => (
+                <div key={i} style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>{t.description}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                      {t.schedDate || 'No date'}{t.schedTimeFrom ? ' · ' + t.schedTimeFrom : ''}{t.priority ? ' · ' + t.priority : ''}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 6, whiteSpace: 'nowrap',
+                    background: t.slStatus === 'Completed' ? 'rgba(16,185,129,0.15)' : t.slStatus === 'Waiting' ? 'rgba(245,158,11,0.15)' : 'rgba(59,130,246,0.15)',
+                    color: t.slStatus === 'Completed' ? '#10B981' : t.slStatus === 'Waiting' ? '#F59E0B' : '#3B82F6',
+                  }}>{t.slStatus || 'Scheduled'}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', textAlign: 'right' }}>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{popup.items.length} task{popup.items.length !== 1 ? 's' : ''}</span>
+            </div>
           </div>
-          {todayTasks > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #3B82F6, #60A5FA)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, color: 'white', fontWeight: 900 }}>{todayTasks}</div>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{todayTasks} task{todayTasks > 1 ? 's' : ''} scheduled</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Click to view your daily schedule</div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>&#128203;</div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>No tasks scheduled for today</div>
-            </div>
-          )}
         </div>
+      )}
 
-        <div className="glass-card" style={{
-          padding: '28px 28px', borderLeft: `5px solid ${sl.overdue > 0 ? 'var(--danger)' : 'var(--success)'}`,
-          transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', cursor: 'default',
-        }}
-          onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = `0 12px 40px rgba(${sl.overdue > 0 ? '239,68,68' : '16,185,129'},0.12)`; }}
-          onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = ''; }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h4 style={{ fontSize: 18, fontWeight: 800, color: 'var(--secondary)', letterSpacing: -0.3 }}>Alerts & Status</h4>
-            {sl.overdue > 0 && <span className="badge badge-overdue" style={{ animation: 'pulse 2s infinite', fontSize: 11, padding: '4px 12px' }}>{sl.overdue} Overdue</span>}
-          </div>
-          {sl.overdue > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #EF4444, #F87171)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, color: 'white', fontWeight: 900 }}>{sl.overdue}</div>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--danger)' }}>{sl.overdue} overdue task{sl.overdue > 1 ? 's' : ''}</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>These tasks need your immediate attention</div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: 20, color: 'var(--success)' }}>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>&#9989;</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--muted)' }}>All clear! No overdue tasks</div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div style={{ marginBottom: 24, animation: animate ? 'fadeInUp 0.6s ease 0.4s both' : 'none' }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', letterSpacing: 1, marginBottom: 14, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 4, height: 16, background: 'var(--primary-gradient)', borderRadius: 2 }} />
-          QUICK ACTIONS
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
-          {[
-            { label: 'Quick Capture', icon: '\u26A1', page: 'quick-capture', color: '#0D9488', bg: 'linear-gradient(135deg, #F0FDFA, #CCFBF1)' },
-            { label: 'Daily Schedule', icon: '\uD83D\uDCC5', page: 'daily-schedule', color: '#2563EB', bg: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)' },
-            { label: 'Someday List', icon: '\uD83D\uDCCB', page: 'someday-list', color: '#D97706', bg: 'linear-gradient(135deg, #FFFBEB, #FEF3C7)' },
-            { label: 'Recurring Tasks', icon: '\uD83D\uDD04', page: 'recurring-tasks', color: '#059669', bg: 'linear-gradient(135deg, #ECFDF5, #D1FAE5)' },
-            { label: 'Week Plan', icon: '\uD83D\uDCC6', page: 'next-week-plan', color: '#7C3AED', bg: 'linear-gradient(135deg, #F5F3FF, #EDE9FE)' },
-          ].map((action, i) => (
-            <button key={i} onClick={() => setCurrentPage(action.page)} style={{
-              background: action.bg, border: `1.5px solid ${action.color}20`, borderRadius: 14,
-              padding: '22px 14px', cursor: 'pointer', textAlign: 'center',
-              transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-            }}
-              onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 12px 32px rgba(0,0,0,0.1)'; }}
-              onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'; }}
-            >
-              <div style={{ fontSize: 32, marginBottom: 8 }}>{action.icon}</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: action.color }}>{action.label}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* System Workflow */}
-      <div className="glass-card" style={{ padding: '20px 24px', animation: animate ? 'fadeInUp 0.6s ease 0.5s both' : 'none' }}>
-        <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, color: 'var(--secondary)' }}>System Workflow</h4>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', fontSize: 11 }}>
-          {[
-            { label: 'Quick Capture', bg: 'var(--primary-gradient)', cursor: 'quick-capture' },
-            { label: 'Someday List', bg: 'linear-gradient(135deg, #3B82F6, #60A5FA)', cursor: 'someday-list' },
-            { label: 'Daily Schedule', bg: 'linear-gradient(135deg, #10B981, #34D399)', cursor: 'daily-schedule' },
-            { label: 'Daily Report', bg: 'linear-gradient(135deg, #1E293B, #334155)', cursor: 'daily-report' },
-            { label: 'Weekly Scorecard', bg: 'linear-gradient(135deg, #8B5CF6, #A78BFA)', cursor: 'weekly-scorecard' },
-          ].map((step, i) => (
-            <React.Fragment key={i}>
-              {i > 0 && <span style={{ color: 'var(--muted)', fontSize: 14, margin: '0 2px' }}>&rarr;</span>}
-              <div onClick={() => setCurrentPage(step.cursor)} style={{
-                padding: '8px 16px', background: step.bg, color: 'white', borderRadius: 10,
-                fontWeight: 600, cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-              }}
-                onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.05)'; }}
-                onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; }}
-              >{step.label}</div>
-            </React.Fragment>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center', marginTop: 10, fontSize: 11 }}>
-          <div style={{ padding: '6px 12px', background: 'linear-gradient(135deg, #F59E0B, #FBBF24)', color: 'white', borderRadius: 8, fontWeight: 600 }}>Recurring Tasks</div>
-          <span style={{ color: 'var(--muted)' }}>feed into</span>
-          <div style={{ padding: '6px 12px', background: 'linear-gradient(135deg, #3B82F6, #60A5FA)', color: 'white', borderRadius: 8, fontWeight: 600 }}>Someday List</div>
-          <span style={{ color: 'var(--muted)', margin: '0 12px' }}>|</span>
-          <div style={{ padding: '6px 12px', background: 'var(--primary-gradient)', color: 'white', borderRadius: 8, fontWeight: 600 }}>Quick Capture</div>
-          <span style={{ color: 'var(--muted)' }}>also feeds</span>
-          <div style={{ padding: '6px 12px', background: 'linear-gradient(135deg, #8B5CF6, #A78BFA)', color: 'white', borderRadius: 8, fontWeight: 600 }}>Info System</div>
-        </div>
-      </div>
-
-      {/* CSS Animations */}
       <style>{`
-        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
       `}</style>
     </div>
   );

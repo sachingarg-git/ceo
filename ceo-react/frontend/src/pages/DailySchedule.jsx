@@ -13,6 +13,32 @@ const RATING_BG = {
 function formatDateISO(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
+
+const ALL_SLOTS = [
+  '7:00 AM','7:30 AM','8:00 AM','8:30 AM','9:00 AM','9:30 AM',
+  '10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','12:30 PM',
+  '1:00 PM','1:30 PM','2:00 PM','2:30 PM','3:00 PM','3:30 PM',
+  '4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM','6:30 PM','7:00 PM',
+  '7:30 PM','8:00 PM','8:30 PM','9:00 PM','9:30 PM','10:00 PM','10:30 PM','11:00 PM','11:30 PM'
+];
+
+function buildOccupiedMap(scheduled) {
+  const map = {};
+  if (!scheduled) return map;
+  scheduled.forEach(t => {
+    if (!t.schedTime) return;
+    const fromIdx = ALL_SLOTS.indexOf(t.schedTime);
+    // Try to find schedTimeTo from the task
+    const toTime = t.schedTimeTo || t.to;
+    const toIdx = toTime ? ALL_SLOTS.indexOf(toTime) : -1;
+    if (fromIdx >= 0 && toIdx > fromIdx) {
+      for (let j = fromIdx + 1; j < toIdx; j++) {
+        map[ALL_SLOTS[j]] = t.task || 'Occupied';
+      }
+    }
+  });
+  return map;
+}
 function displayDate(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -30,13 +56,15 @@ export default function DailySchedule() {
   const [actuallyDone, setActuallyDone] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [markingDone, setMarkingDone] = useState({});
+  const [qcRows, setQcRows] = useState([]);
 
   const loadData = useCallback(async (targetDate) => {
     setLoading(true);
     try {
-      const res = await api.getDailySchedule(targetDate);
+      const [res, qcRes] = await Promise.all([api.getDailySchedule(targetDate), api.getQuickCapture()]);
       if (res.success) { setData(res); setRating(res.dayRating || ''); setActuallyDone(res.actuallyDone || ''); }
       else showToast('Failed to load schedule', 'error');
+      if (qcRes.success) setQcRows(qcRes.rows || []);
     } catch (err) { showToast('Error loading schedule', 'error'); }
     setLoading(false);
   }, [showToast]);
@@ -80,13 +108,36 @@ export default function DailySchedule() {
   const scheduled = data?.scheduled || [];
   const waiting = data?.waiting || [];
 
+  // Build occupied map from QC rows for this date (slots between from-to)
+  const occupiedMap = React.useMemo(() => {
+    const map = {};
+    const todayQc = qcRows.filter(r => r.schedDate === date && r.schedTimeFrom && r.schedTimeTo);
+    todayQc.forEach(r => {
+      const fromIdx = ALL_SLOTS.indexOf(r.schedTimeFrom);
+      const toIdx = ALL_SLOTS.indexOf(r.schedTimeTo);
+      if (fromIdx >= 0 && toIdx > fromIdx) {
+        for (let j = fromIdx + 1; j < toIdx; j++) {
+          map[ALL_SLOTS[j]] = r.description || 'Occupied';
+        }
+      }
+    });
+    // Also from scheduled RT tasks
+    scheduled.forEach(t => {
+      if (!t.schedTime) return;
+      const fromIdx = ALL_SLOTS.indexOf(t.schedTime);
+      if (fromIdx < 0) return;
+      // RT tasks occupy 1 slot by default
+    });
+    return map;
+  }, [qcRows, scheduled, date]);
+
   // Count tasks that are done
   const doneCount = [...scheduled, ...waiting].filter(t => t.finalStatus === 'Completed').length;
 
   if (loading) {
     return (
       <div>
-        <div className="page-header"><div><h2>Daily Schedule</h2></div></div>
+        <div className="page-header"><div></div></div>
         <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>
       </div>
     );
@@ -95,7 +146,7 @@ export default function DailySchedule() {
   return (
     <div>
       <div className="page-header">
-        <div><h2>Daily Schedule</h2><p>{displayDate(date)}</p></div>
+        <div><p>{displayDate(date)}</p></div>
         <div className="page-header-actions">
           <button className="btn btn-outline btn-sm" onClick={goPrev}>&#9664; Prev</button>
           <button className={`btn btn-sm ${isToday ? 'btn-primary' : 'btn-outline'}`} onClick={goToday}>Today</button>
@@ -106,7 +157,7 @@ export default function DailySchedule() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, alignItems: 'start' }}>
         {/* Left: Time Grid */}
         <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 13, color: 'var(--secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 13, color: 'var(--text)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Time Grid</span>
             <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500 }}>
               {timeGrid.filter(s => s.task).length} tasks assigned
@@ -134,8 +185,17 @@ export default function DailySchedule() {
                 ) : timeGrid.map((slot, i) => {
                   const task = slot.task;
                   const hasTask = !!task;
+                  const isOccupied = !hasTask && occupiedMap[slot.time];
                   const isDone = task?.finalStatus === 'Completed';
                   const isHigh = task?.priority === 'High';
+                  if (isOccupied) {
+                    return (
+                      <tr key={i} style={{ background: 'rgba(13,110,110,0.04)', borderLeft: '3px solid var(--primary)', opacity: 0.5 }}>
+                        <td style={{ fontWeight: 600, fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{slot.time}</td>
+                        <td colSpan={4} style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>&#8627; {occupiedMap[slot.time]} (continued)</td>
+                      </tr>
+                    );
+                  }
                   return (
                     <tr key={i} style={hasTask ? {
                       background: isDone ? 'rgba(16, 185, 129, 0.06)' : isHigh ? 'var(--danger-bg)' : 'var(--success-bg)',
@@ -190,7 +250,7 @@ export default function DailySchedule() {
                             style={{
                               fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 8, border: 'none',
                               cursor: markingDone[`${task.source}-${task.rowNum}`] ? 'wait' : 'pointer',
-                              background: isDone ? '#10b981' : '#f0f0f0',
+                              background: isDone ? '#10b981' : 'var(--border)',
                               color: isDone ? '#fff' : 'var(--text-secondary)',
                               transition: 'all 0.2s',
                             }}

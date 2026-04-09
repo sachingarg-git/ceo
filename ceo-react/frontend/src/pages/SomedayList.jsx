@@ -203,10 +203,7 @@ export default function SomedayList() {
   return (
     <div>
       <div className="page-header">
-        <div>
-          <h1>Someday List</h1>
-          <p className="page-subtitle">Computed task list from Quick Capture and Recurring Tasks</p>
-        </div>
+        <div></div>
         <div className="page-header-actions">
           <button className="btn btn-outline btn-sm" onClick={loadData}>
             Refresh
@@ -215,27 +212,28 @@ export default function SomedayList() {
       </div>
 
       {/* Summary Bar */}
-      <div className="summary-bar" style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div className="glass-card" style={{ flex: 1, minWidth: 130, padding: '16px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--accent, #4f8cff)' }}>{data?.totalTasks ?? 0}</div>
-          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Total Tasks</div>
-        </div>
-        <div className="glass-card" style={{ flex: 1, minWidth: 130, padding: '16px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#2196f3' }}>{data?.totalScheduled ?? 0}</div>
-          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Scheduled</div>
-        </div>
-        <div className="glass-card" style={{ flex: 1, minWidth: 130, padding: '16px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#ff9800' }}>{data?.totalWaiting ?? 0}</div>
-          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Waiting</div>
-        </div>
-        <div className="glass-card" style={{ flex: 1, minWidth: 130, padding: '16px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#4caf50' }}>{completedCount}</div>
-          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Completed</div>
-        </div>
-        <div className="glass-card" style={{ flex: 1, minWidth: 130, padding: '16px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#9c27b0' }}>{data?.arc ?? 0}</div>
-          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Active Recurring</div>
-        </div>
+      <div className="summary-bar" style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Total Tasks', value: data?.totalTasks ?? 0, color: '#4F46E5', bg: 'linear-gradient(135deg,#EEF2FF,#E0E7FF)', filterKey: 'All' },
+          { label: 'Scheduled', value: data?.totalScheduled ?? 0, color: '#2563EB', bg: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', filterKey: 'Scheduled' },
+          { label: 'Waiting', value: data?.totalWaiting ?? 0, color: '#D97706', bg: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', filterKey: 'Waiting' },
+          { label: 'Completed', value: completedCount, color: '#16A34A', bg: 'linear-gradient(135deg,#F0FDF4,#DCFCE7)', filterKey: 'Completed' },
+          { label: 'Active Recurring', value: data?.arc ?? 0, color: '#9333EA', bg: 'linear-gradient(135deg,#FAF5FF,#EDE9FE)', filterKey: null },
+        ].map((card, i) => (
+          <div key={i}
+            onClick={() => card.filterKey && setFilter(card.filterKey)}
+            style={{
+              flex: 1, minWidth: 130, padding: '16px 20px', textAlign: 'center', borderRadius: 14,
+              background: filter === card.filterKey ? card.color : card.bg,
+              border: `2px solid ${filter === card.filterKey ? card.color : 'transparent'}`,
+              boxShadow: filter === card.filterKey ? `0 4px 14px ${card.color}40` : '0 1px 4px rgba(0,0,0,0.07)',
+              cursor: card.filterKey ? 'pointer' : 'default',
+              transition: 'all 0.2s',
+            }}>
+            <div style={{ fontSize: 26, fontWeight: 800, color: filter === card.filterKey ? '#fff' : card.color }}>{card.value}</div>
+            <div style={{ fontSize: 11, fontWeight: 600, marginTop: 4, color: filter === card.filterKey ? 'rgba(255,255,255,0.85)' : card.color, opacity: filter === card.filterKey ? 1 : 0.75, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{card.label}</div>
+          </div>
+        ))}
       </div>
 
       {/* Filter Bar + Search */}
@@ -266,7 +264,7 @@ export default function SomedayList() {
 
       {/* Data Table */}
       <div className="glass-card">
-        <div className="table-container" style={{ overflowX: 'auto' }}>
+        <div className="table-container" style={{ overflowX: 'hidden' }}>
           <table className="data-table">
             <thead>
               <tr>
@@ -417,7 +415,7 @@ export default function SomedayList() {
                       <td>
                         {task.notes ? (
                           <div
-                            style={{ fontSize: 11, opacity: 0.7, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            style={{ fontSize: 11, opacity: 0.7, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                             title={task.notes}
                           >
                             {task.notes}

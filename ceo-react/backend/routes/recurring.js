@@ -159,6 +159,25 @@ function computeNextOccurrence(freq, weekday, weekPos, fixedDate) {
   }
 
   if (freq === 'Monthly') {
+    // If fixedDate is set, use that day-of-month for monthly recurrence
+    if (fixedDate) {
+      const fd = parseLocalDate(fixedDate);
+      if (!fd) return null;
+      const dayOfMonth = fd.getDate();
+      // Try this month, then next month
+      for (let mOff = 0; mOff <= 2; mOff++) {
+        let year = today.getFullYear();
+        let month = today.getMonth() + mOff;
+        if (month > 11) { month -= 12; year++; }
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const day = Math.min(dayOfMonth, daysInMonth);
+        const candidate = new Date(year, month, day);
+        candidate.setHours(0,0,0,0);
+        if (candidate >= today) return candidate;
+      }
+      return null;
+    }
+    // Otherwise use weekday + week position
     const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const targetDayIdx = dayNames.indexOf(weekday);
     if (targetDayIdx < 0) return null;

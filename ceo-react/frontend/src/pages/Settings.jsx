@@ -177,7 +177,7 @@ export default function Settings() {
   if (loading) {
     return (
       <div>
-        <div className="page-header"><div><h2>Settings</h2></div></div>
+        <div className="page-header"><div></div></div>
         <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>
       </div>
     );
@@ -186,7 +186,7 @@ export default function Settings() {
   return (
     <div>
       <div className="page-header">
-        <div><h2>Settings</h2><p>Application configuration & user management</p></div>
+        <div></div>
         <button className="btn btn-outline btn-sm" onClick={loadAll}>Refresh</button>
       </div>
 

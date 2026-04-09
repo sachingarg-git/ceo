@@ -160,7 +160,7 @@ export default function PerformanceAnalytics() {
   if (loading) {
     return (
       <div>
-        <div className="page-header"><h1>Performance Analytics</h1></div>
+        <div className="page-header"></div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <div className="spinner" />
           <p style={{ marginTop: '1rem', opacity: 0.7 }}>Loading analytics...</p>
@@ -172,7 +172,6 @@ export default function PerformanceAnalytics() {
   return (
     <div>
       <div className="page-header">
-        <h1>Performance Analytics</h1>
         <button className="btn btn-outline" onClick={loadData}>Refresh</button>
       </div>
 

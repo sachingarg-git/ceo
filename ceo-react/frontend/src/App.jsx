@@ -17,6 +17,14 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [loginLoading, setLoginLoading] = useState(false);
   const [showSignUp, setShowSignUp] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem('app_theme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('app_theme', theme);
+  }, [theme]);
+
+  function toggleTheme() { setTheme(t => t === 'light' ? 'dark' : 'light'); }
 
   useEffect(() => {
     const saved = localStorage.getItem('ceo_user');
@@ -92,7 +100,7 @@ export default function App() {
     return user.permissions.includes(page);
   }
 
-  const ctx = { user, currentPage, setCurrentPage, showToast, logout, hasPermission };
+  const ctx = { user, currentPage, setCurrentPage, showToast, logout, hasPermission, theme, toggleTheme };
 
   // Show Sign Up page
   if (showSignUp && !user) {

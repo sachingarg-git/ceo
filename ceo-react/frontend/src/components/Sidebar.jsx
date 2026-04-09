@@ -68,7 +68,7 @@ export default function Sidebar({ open, onClose }) {
             if (visibleItems.length === 0) return null;
             return (
               <div key={si} style={{ marginBottom: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: '#475569', letterSpacing: 2, padding: '8px 16px 4px', textTransform: 'uppercase' }}>{section.label}</div>
+                <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', letterSpacing: 2, padding: '10px 16px 4px', textTransform: 'uppercase' }}>{section.label}</div>
                 {visibleItems.map(item => (
                   <a key={item.id} className={`nav-item${currentPage === item.id ? ' active' : ''}`} onClick={() => navigate(item.id)}>
                     <span className="nav-icon"><NavIcon path={item.icon} /></span>
@@ -85,8 +85,8 @@ export default function Sidebar({ open, onClose }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div className="user-avatar">{user?.name?.charAt(0) || 'C'}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#0F172A', lineHeight: 1.3 }}>{user?.name || 'CEO'}</div>
-                <div style={{ fontSize: 10, color: '#64748B', marginTop: 1 }}>{user?.role || 'Admin'}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{user?.name || 'CEO'}</div>
+                <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>{user?.role || 'Admin'}</div>
               </div>
             </div>
           </div>

@@ -62,7 +62,7 @@ export default function NextWeekPlan() {
   if (loading && !data) {
     return (
       <div>
-        <div className="page-header"><div><h2>Week Plan</h2></div></div>
+        <div className="page-header"><div></div></div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <div className="spinner" />
           <p style={{ marginTop: '1rem', opacity: 0.7 }}>Loading...</p>
@@ -74,7 +74,7 @@ export default function NextWeekPlan() {
   if (!data) {
     return (
       <div>
-        <div className="page-header"><div><h2>Week Plan</h2></div></div>
+        <div className="page-header"><div></div></div>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <p>Unable to load plan data.</p>
           <button className="btn btn-primary" onClick={() => loadData(weekOffset)}>Retry</button>
@@ -88,8 +88,8 @@ export default function NextWeekPlan() {
   return (
     <div>
       <div className="page-header">
-        <div><h2>Week Plan</h2>
-          <p>{weekDates.length > 0 ? `${weekDates[0].date} - ${weekDates[weekDates.length - 1].date}` : ''}</p>
+        <div>
+          <p style={{ color: 'var(--text)', fontWeight: 600, fontSize: 14 }}>Week: {weekDates.length > 0 ? `${weekDates[0].date} - ${weekDates[weekDates.length - 1].date}` : ''}</p>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <button className="btn btn-outline btn-sm" onClick={goPrev} title="Previous Week">&larr; Prev</button>

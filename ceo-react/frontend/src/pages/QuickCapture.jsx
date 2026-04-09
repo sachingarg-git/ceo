@@ -68,6 +68,7 @@ export default function QuickCapture() {
   const [filterPriority, setFilterPriority] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
 
+  const [filterDate, setFilterDate] = useState(''); // 'today' | 'tomorrow' | 'upcoming'
   const [showBulk, setShowBulk] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [selected, setSelected] = useState(new Set());
@@ -82,6 +83,16 @@ export default function QuickCapture() {
   const tbodyRef = useRef(null);
 
   useEffect(() => { loadData(); }, []);
+
+  // Auto-resize all description textareas after rows render
+  useEffect(() => {
+    if (!tbodyRef.current) return;
+    const textareas = tbodyRef.current.querySelectorAll('textarea.ss-desc-cell');
+    textareas.forEach(ta => {
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+    });
+  }, [rows]);
 
   function getEmptyForm() {
     return {
@@ -210,12 +221,26 @@ export default function QuickCapture() {
     });
   }
 
+  /* ── date card counts ── */
+  const todayISO2 = todayISO();
+  const tomorrowISO = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); })();
+  const todayCount = rows.filter(r => r.schedDate === todayISO2 && r.slStatus !== 'Completed').length;
+  const tomorrowCount = rows.filter(r => r.schedDate === tomorrowISO && r.slStatus !== 'Completed').length;
+  const upcomingCount = rows.filter(r => r.schedDate && r.schedDate > tomorrowISO && r.slStatus !== 'Completed').length;
+  const notScheduledCount = rows.filter(r => !r.schedDate && r.slStatus !== 'Completed' && r.sendTo !== 'Information System').length;
+
   /* ── filtering ── */
   const filtered = rows.filter(r => {
+    // Hide tasks sent to Information System (they show in Info System page instead)
+    if (!filterSendTo && r.sendTo === 'Information System') return false;
     if (search && !(r.description || '').toLowerCase().includes(search.toLowerCase())) return false;
     if (filterSendTo && r.sendTo !== filterSendTo) return false;
     if (filterPriority && r.priority !== filterPriority) return false;
     if (filterStatus && r.slStatus !== filterStatus) return false;
+    if (filterDate === 'today' && r.schedDate !== todayISO2) return false;
+    if (filterDate === 'tomorrow' && r.schedDate !== tomorrowISO) return false;
+    if (filterDate === 'upcoming' && !(r.schedDate && r.schedDate > tomorrowISO)) return false;
+    if (filterDate === 'notscheduled' && !!r.schedDate) return false;
     return true;
   });
 
@@ -233,7 +258,7 @@ export default function QuickCapture() {
       }
     }
 
-    // Sched Date -> auto-fill deadline + clear from/to if cleared
+    // Schedule Date -> auto-fill deadline + clear from/to if cleared
     if (field === 'schedDate') {
       if (value) {
         if (!row?.deadline) updates.deadline = value;
@@ -344,6 +369,21 @@ export default function QuickCapture() {
     setSelected(new Set()); setBulkDeleteConfirm(null); loadData();
   }
 
+  async function bulkSendToInfoSystem() {
+    const count = selected.size;
+    if (count === 0) return;
+    let moved = 0;
+    for (const id of selected) {
+      try {
+        await api.updateTask(id, { sendTo: 'Information System' });
+        moved++;
+      } catch { /* skip */ }
+    }
+    showToast(`${moved} task${moved > 1 ? 's' : ''} moved to Information System`, 'success');
+    setSelected(new Set());
+    loadData();
+  }
+
   /* ── keyboard navigation ── */
   const handleKeyDown = useCallback((e) => {
     const cell = e.target.closest('[data-row][data-col]');
@@ -390,7 +430,7 @@ export default function QuickCapture() {
   if (loading) {
     return (
       <div>
-        <div className="page-header"><div><h2>Quick Capture</h2><p>Capture tasks quickly</p></div></div>
+        <div className="page-header"><div></div></div>
         <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>
       </div>
     );
@@ -404,10 +444,9 @@ export default function QuickCapture() {
   return (
     <div>
       <div className="page-header">
-        <div><h2>Quick Capture</h2><p>Capture tasks quickly &mdash; click any cell to edit inline</p></div>
+        <div></div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-outline btn-sm" onClick={() => setShowBulk(v => !v)}>+ Bulk Add</button>
-          <button className="btn btn-primary btn-sm" onClick={openAddModal}>+ Add Task</button>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowBulk(v => !v)}>+ Bulk Add</button>
         </div>
       </div>
 
@@ -426,6 +465,31 @@ export default function QuickCapture() {
         </div>
       )}
 
+      {/* Summary Cards */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+        {[
+          { key: 'today', label: 'Today', count: todayCount, color: '#0D6E6E', bg: '#E6F4F4', icon: '📅' },
+          { key: 'tomorrow', label: 'Tomorrow', count: tomorrowCount, color: '#7C3AED', bg: '#F3EFFE', icon: '🗓️' },
+          { key: 'upcoming', label: 'Upcoming', count: upcomingCount, color: '#D97706', bg: '#FEF3C7', icon: '🔮' },
+          { key: 'notscheduled', label: 'Not Scheduled', count: notScheduledCount, color: '#DC2626', bg: '#FEF2F2', icon: '⏳' },
+        ].map(card => (
+          <div key={card.key} onClick={() => setFilterDate(f => f === card.key ? '' : card.key)}
+            style={{
+              flex: 1, padding: '12px 16px', borderRadius: 10, cursor: 'pointer',
+              background: filterDate === card.key ? card.color : card.bg,
+              border: `2px solid ${filterDate === card.key ? card.color : 'transparent'}`,
+              transition: 'all 0.2s', boxShadow: filterDate === card.key ? `0 4px 14px ${card.color}40` : '0 1px 4px rgba(0,0,0,0.07)',
+              display: 'flex', alignItems: 'center', gap: 12,
+            }}>
+            <span style={{ fontSize: 22 }}>{card.icon}</span>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, color: filterDate === card.key ? '#fff' : card.color }}>{card.count}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: filterDate === card.key ? 'rgba(255,255,255,0.85)' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{card.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Filter Bar */}
       <div className="filter-bar">
         <input type="text" className="form-input" placeholder="Search tasks..." value={search} onChange={e => setSearch(e.target.value)} style={{ maxWidth: 220 }} />
@@ -438,6 +502,12 @@ export default function QuickCapture() {
         <select className="form-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ maxWidth: 160 }}>
           <option value="">All Status</option><option value="Scheduled">Scheduled</option><option value="Waiting">Waiting</option><option value="Completed">Completed</option>
         </select>
+        {(search || filterSendTo || filterPriority || filterStatus || filterDate) && (
+          <button className="btn btn-outline btn-sm" onClick={() => { setSearch(''); setFilterSendTo(''); setFilterPriority(''); setFilterStatus(''); setFilterDate(''); }}
+            style={{ marginLeft: 4, color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+            ✕ Clear Filter
+          </button>
+        )}
         <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>{filtered.length} tasks</div>
       </div>
 
@@ -447,6 +517,17 @@ export default function QuickCapture() {
           <div className="ss-toolbar-left">
             <input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} checked={selected.size > 0 && selected.size === filtered.length} />
             <button className={'ss-del-btn' + (selected.size > 0 ? ' active' : '')} onClick={requestDeleteSelected} disabled={selected.size === 0}>&#10005; Delete</button>
+            {selected.size > 0 && (
+              <button style={{
+                padding: '6px 14px', fontSize: 11, fontWeight: 600, border: '1.5px solid var(--info)',
+                color: 'var(--info)', background: 'var(--info-bg)', borderRadius: 8, cursor: 'pointer',
+                transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 4,
+              }}
+                onMouseOver={e => { e.currentTarget.style.background = 'var(--info)'; e.currentTarget.style.color = '#fff'; }}
+                onMouseOut={e => { e.currentTarget.style.background = 'var(--info-bg)'; e.currentTarget.style.color = 'var(--info)'; }}
+                onClick={bulkSendToInfoSystem}
+              >&#8594; Send to Info System</button>
+            )}
             {selected.size > 0 && <span className="ss-sel-count">{selected.size} selected</span>}
           </div>
         </div>
@@ -454,26 +535,26 @@ export default function QuickCapture() {
           <table className="ss-table">
             <thead>
               <tr>
-                <th style={{ width: 28 }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>
-                <th style={{ width: 28 }}>#</th>
-                <th style={{ width: 130 }}>Created</th>
+                <th style={{ minWidth: 28, width: 28 }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>
+                <th style={{ minWidth: 28, width: 28 }}>#</th>
+                <th style={{ minWidth: 130, width: 130 }}>Created</th>
                 <th style={{ minWidth: 200 }}>Description</th>
-                <th style={{ width: 80 }}>Priority</th>
-                <th style={{ width: 95 }}>Sched Date</th>
-                <th style={{ width: 95 }}>Deadline</th>
-                <th style={{ width: 115 }}>Send To</th>
-                <th style={{ width: 95 }}>Batch</th>
-                <th style={{ width: 85 }}>SL Status</th>
-                <th style={{ width: 100 }}>From</th>
-                <th style={{ width: 100 }}>To</th>
-                <th style={{ width: 120 }}>Notes</th>
-                <th style={{ width: 50 }}>Actions</th>
+                <th style={{ minWidth: 80, width: 80 }}>Priority</th>
+                <th style={{ minWidth: 115, width: 115 }}>Schedule Date</th>
+                <th style={{ minWidth: 100, width: 100 }}>Deadline</th>
+                <th style={{ minWidth: 115, width: 115 }}>Send To</th>
+                <th style={{ minWidth: 90, width: 90 }}>Batch</th>
+                <th style={{ minWidth: 85, width: 85 }}>SL Status</th>
+                <th style={{ minWidth: 100, width: 100 }}>From</th>
+                <th style={{ minWidth: 100, width: 100 }}>To</th>
+                <th style={{ minWidth: 110, width: 110 }}>Notes</th>
+                <th style={{ minWidth: 50, width: 50 }}>Actions</th>
               </tr>
             </thead>
             <tbody ref={tbodyRef} onKeyDown={handleKeyDown}>
               {filtered.length === 0 ? (
                 <tr><td colSpan={14} style={{ textAlign: 'center', padding: 30, color: 'var(--muted)' }}>
-                  {rows.length === 0 ? <>&#9889; No tasks captured yet. Click "Bulk Add" or "Add Task" to get started!</> : 'No tasks match your filters.'}
+                  {rows.length === 0 ? <>&#9889; No tasks captured yet. Click "Bulk Add" to get started!</> : 'No tasks match your filters.'}
                 </td></tr>
               ) : filtered.map((row, idx) => {
                 const hasSchedDate = !!row.schedDate;
@@ -495,12 +576,15 @@ export default function QuickCapture() {
                       )}
                     </td>
                     {/* 2: Created (read-only) */}
-                    <td data-row={idx} data-col={2} style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                    <td data-row={idx} data-col={2} style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                       {formatCreated(row.date, row.time)}
                     </td>
                     {/* 3: Description */}
-                    <td data-row={idx} data-col={3}>
-                      <input className="ss-cell" defaultValue={row.description}
+                    <td data-row={idx} data-col={3} style={{ height: 'auto', verticalAlign: 'top', padding: 0 }}>
+                      <textarea className="ss-cell ss-desc-cell" defaultValue={row.description} title={row.description}
+                        rows={1}
+                        onInput={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                        onFocus={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
                         onBlur={e => { if (e.target.value !== row.description) handleCellChange(row.id, 'description', e.target.value); }} />
                     </td>
                     {/* 4: Priority */}
@@ -510,7 +594,7 @@ export default function QuickCapture() {
                         {(masters?.priority || ['High','Medium','Low']).map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </td>
-                    {/* 5: Sched Date */}
+                    {/* 5: Schedule Date */}
                     <td data-row={idx} data-col={5}>
                       <input type="date" className="ss-cell ss-date-only" value={row.schedDate || ''}
                         onChange={e => handleCellChange(row.id, 'schedDate', e.target.value)} />
@@ -623,7 +707,7 @@ export default function QuickCapture() {
             </div>
             <div className="form-row">
               <div className="form-group">
-                <label className="form-label">Sched Date</label>
+                <label className="form-label">Schedule Date</label>
                 <input type="date" className="form-input" value={form.schedDate} onChange={e => handleFormChange('schedDate', e.target.value)} />
               </div>
               <div className="form-group">

@@ -32,7 +32,7 @@ function showWeekPosition(freq) {
   return freq === 'Weekly' || freq === 'Monthly';
 }
 function showFixedDate(freq) {
-  return freq === 'Yearly' || freq === 'Fixed Date';
+  return freq === 'Yearly' || freq === 'Fixed Date' || freq === 'Monthly';
 }
 
 function formatNextOcc(isoStr) {
@@ -245,7 +245,7 @@ export default function RecurringTasks() {
   if (loading) {
     return (
       <div>
-        <div className="page-header"><div><h2>Recurring Tasks</h2><p>Manage recurring tasks</p></div></div>
+        <div className="page-header"><div></div></div>
         <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>
       </div>
     );
@@ -254,10 +254,7 @@ export default function RecurringTasks() {
   return (
     <div>
       <div className="page-header">
-        <div>
-          <h2>Recurring Tasks</h2>
-          <p>Manage tasks that repeat on a schedule &mdash; click any cell to edit inline</p>
-        </div>
+        <div></div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary btn-sm" onClick={addNewRow}>+ Add Recurring Task</button>
         </div>
@@ -372,9 +369,11 @@ export default function RecurringTasks() {
                           </select>
                         </td>
                         {/* 7: Fixed Date */}
-                        <td data-row={idx} data-col={7}>
+                        <td data-row={idx} data-col={7} style={{ background: fdEnabled ? 'rgba(13,110,110,0.06)' : 'transparent' }}>
                           <input type="date" className="ss-cell ss-date-only" value={row.fixedDate || ''}
-                            onChange={e => handleCellChange(row.id, 'fixedDate', e.target.value)} disabled={!fdEnabled} />
+                            onChange={e => handleCellChange(row.id, 'fixedDate', e.target.value)}
+                            disabled={!fdEnabled}
+                            style={{ opacity: fdEnabled ? 1 : 0.3, cursor: fdEnabled ? 'pointer' : 'not-allowed', borderColor: fdEnabled && row.fixedDate ? 'var(--primary)' : 'transparent' }} />
                         </td>
                         {/* 8: Time */}
                         <td data-row={idx} data-col={8}>
@@ -462,9 +461,11 @@ export default function RecurringTasks() {
                         </select>
                       </td>
                       {/* Fixed Date */}
-                      <td>
+                      <td style={{ background: showFixedDate(newRow.frequency) ? 'rgba(13,110,110,0.06)' : 'transparent' }}>
                         <input type="date" className="ss-cell ss-date-only" value={newRow.fixedDate}
-                          onChange={e => updateNewRowField('fixedDate', e.target.value)} disabled={!showFixedDate(newRow.frequency)} />
+                          onChange={e => updateNewRowField('fixedDate', e.target.value)}
+                          disabled={!showFixedDate(newRow.frequency)}
+                          style={{ opacity: showFixedDate(newRow.frequency) ? 1 : 0.3, cursor: showFixedDate(newRow.frequency) ? 'pointer' : 'not-allowed' }} />
                       </td>
                       {/* Time */}
                       <td>

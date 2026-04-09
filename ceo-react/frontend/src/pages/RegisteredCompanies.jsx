@@ -128,8 +128,6 @@ export default function RegisteredCompanies() {
   return (
     <div>
       <div className="page-header">
-        <h1>Registered Companies</h1>
-        <p>Manage company registrations and approvals</p>
       </div>
 
       {/* KPI Cards */}
