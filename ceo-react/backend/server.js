@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { initDatabase } = require('./db');
+const { bot, initBotDB, setupWebhook } = require('./bot');
 
 const tasksRouter = require('./routes/tasks');
 const recurringRouter = require('./routes/recurring');
@@ -40,9 +41,17 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Telegram webhook endpoint
+app.post('/webhook/telegram', (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
 async function start() {
   try {
     await initDatabase();
+    await initBotDB();
+    await setupWebhook();
     app.listen(PORT, () => {
       console.log(`CEO Productivity API running on http://localhost:${PORT}`);
     });
