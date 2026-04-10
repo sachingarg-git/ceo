@@ -29,7 +29,15 @@ export default function App() {
   useEffect(() => {
     const saved = localStorage.getItem('ceo_user');
     if (saved) {
-      try { setUser(JSON.parse(saved)); } catch {}
+      try {
+        const u = JSON.parse(saved);
+        // Migrate old sessions: assign correct type if missing
+        if (!u.type) {
+          u.type = (u.isAdmin || u.role === 'CEO' || u.role === 'EA' || !u.companyId) ? 'ceo' : 'company';
+        }
+        setUser(u);
+        localStorage.setItem('ceo_user', JSON.stringify(u));
+      } catch {}
     }
   }, []);
 
@@ -56,8 +64,9 @@ export default function App() {
       // Try company login
       const compRes = await api.companyLogin(username, password);
       if (compRes.success && compRes.user) {
-        setUser(compRes.user);
-        localStorage.setItem('ceo_user', JSON.stringify(compRes.user));
+        const companyUser = { ...compRes.user, type: 'company' };
+        setUser(companyUser);
+        localStorage.setItem('ceo_user', JSON.stringify(companyUser));
         setLoginLoading(false);
         return { success: true };
       }
@@ -67,8 +76,8 @@ export default function App() {
     } catch {
       // Fallback to hardcoded if DB not available
       const fallback = [
-        { username: 'ceo', password: 'ceo123', name: 'CEO', role: 'CEO', isAdmin: true, permissions: ['dashboard','quick-capture','someday-list','daily-schedule','recurring-tasks','info-system','daily-report','weekly-scorecard','next-week-plan','performance-analytics','settings','user-management','registered-companies'] },
-        { username: 'ea', password: 'ea123', name: 'Executive Assistant', role: 'EA', permissions: ['dashboard','quick-capture','someday-list','daily-schedule','recurring-tasks','info-system','daily-report','weekly-scorecard','next-week-plan','performance-analytics'] },
+        { username: 'ceo', password: 'ceo123', name: 'CEO', role: 'CEO', type: 'ceo', isAdmin: true, permissions: ['dashboard','quick-capture','someday-list','daily-schedule','recurring-tasks','info-system','daily-report','weekly-scorecard','next-week-plan','performance-analytics','settings','user-management','registered-companies'] },
+        { username: 'ea', password: 'ea123', name: 'Executive Assistant', role: 'EA', type: 'ceo', permissions: ['dashboard','quick-capture','someday-list','daily-schedule','recurring-tasks','info-system','daily-report','weekly-scorecard','next-week-plan','performance-analytics'] },
       ];
       const found = fallback.find(u => u.username === username && u.password === password);
       if (found) {
