@@ -30,10 +30,209 @@ const ALL_PAGES = [
   { id: 'user-management', label: 'User Management' },
 ];
 
+const THEMES = [
+  {
+    id: 'light',
+    label: 'Classic Light',
+    emoji: '☀️',
+    sidebarGrad: 'linear-gradient(180deg,#1E293B 0%,#334155 100%)',
+    bg: '#F8FAFC',
+    primary: '#6366F1',
+    accent: '#fff',
+    desc: 'Clean white workspace with indigo accent',
+  },
+  {
+    id: 'dark',
+    label: 'Midnight Dark',
+    emoji: '🌙',
+    sidebarGrad: 'linear-gradient(180deg,#0D1117 0%,#161B22 100%)',
+    bg: '#0A0B0E',
+    primary: '#818CF8',
+    accent: '#1E293B',
+    desc: 'Dark mode for night-time focus',
+  },
+  {
+    id: 'ocean',
+    label: 'Ocean Blue',
+    emoji: '🌊',
+    sidebarGrad: 'linear-gradient(180deg,#0369A1 0%,#0EA5E9 100%)',
+    bg: '#F0F9FF',
+    primary: '#0EA5E9',
+    accent: '#E0F2FE',
+    desc: 'Cool blue tones for calm productivity',
+  },
+  {
+    id: 'forest',
+    label: 'Forest Green',
+    emoji: '🌿',
+    sidebarGrad: 'linear-gradient(180deg,#14532D 0%,#166534 100%)',
+    bg: '#F0FDF4',
+    primary: '#16A34A',
+    accent: '#DCFCE7',
+    desc: 'Natural green for focused deep work',
+  },
+  {
+    id: 'purple',
+    label: 'Royal Purple',
+    emoji: '💜',
+    sidebarGrad: 'linear-gradient(180deg,#2E1065 0%,#4C1D95 100%)',
+    bg: '#FAF5FF',
+    primary: '#7C3AED',
+    accent: '#EDE9FE',
+    desc: 'Elegant purple for creative thinkers',
+  },
+  {
+    id: 'sunset',
+    label: 'Sunset Orange',
+    emoji: '🌅',
+    sidebarGrad: 'linear-gradient(180deg,#7C2D12 0%,#C2410C 100%)',
+    bg: '#FFF7ED',
+    primary: '#EA580C',
+    accent: '#FFEDD5',
+    desc: 'Warm tones for energetic mornings',
+  },
+  // ── ANIMATED ──
+  {
+    id: 'aurora',
+    label: 'Aurora Night',
+    emoji: '🌌',
+    animated: true,
+    sidebarGrad: 'linear-gradient(180deg,#03091A 0%,#061228 100%)',
+    bg: '#03091A',
+    primary: '#22D3EE',
+    accent: 'rgba(34,211,238,0.12)',
+    previewBg: 'linear-gradient(-45deg,#03091A,#061228,#0A1A40,#041020)',
+    desc: 'Animated northern lights on deep space',
+  },
+  {
+    id: 'neon',
+    label: 'Neon Cyber',
+    emoji: '⚡',
+    animated: true,
+    sidebarGrad: 'linear-gradient(180deg,#07000F 0%,#0F0020 100%)',
+    bg: '#07000F',
+    primary: '#FF2D78',
+    accent: 'rgba(255,45,120,0.12)',
+    previewBg: 'radial-gradient(ellipse at 30% 50%,rgba(255,45,120,0.15) 0%,#07000F 60%)',
+    desc: 'Hot pink & cyan neon with pulsing glow',
+  },
+  {
+    id: 'gradient',
+    label: 'Gradient Flow',
+    emoji: '🌈',
+    animated: true,
+    sidebarGrad: 'linear-gradient(180deg,#1A0050 0%,#3B0087 50%,#6D28D9 100%)',
+    bg: '#FDF4FF',
+    primary: '#8B5CF6',
+    accent: 'rgba(255,255,255,0.75)',
+    previewBg: 'linear-gradient(-45deg,#FDF4FF,#F0EAFF,#E8F4FF,#FFF0F7)',
+    desc: 'Soft pastel gradient that flows & breathes',
+  },
+];
+
+/* ── Reusable theme preview card ── */
+function ThemeCard({ t, active, onSelect }) {
+  const mainBg = t.previewBg || t.bg;
+  const isAnimated = t.animated;
+  return (
+    <div
+      onClick={onSelect}
+      style={{
+        cursor: 'pointer', borderRadius: 16, overflow: 'hidden',
+        border: active ? `3px solid ${t.primary}` : '3px solid var(--border)',
+        boxShadow: active
+          ? `0 0 0 3px ${t.primary}33, 0 8px 28px rgba(0,0,0,0.14)`
+          : isAnimated
+            ? `0 2px 12px rgba(0,0,0,0.1), 0 0 0 1px ${t.primary}22`
+            : '0 2px 10px rgba(0,0,0,0.06)',
+        transition: 'all 0.22s',
+        transform: active ? 'translateY(-4px)' : 'none',
+        background: 'var(--card-bg)',
+        position: 'relative',
+      }}
+    >
+      {/* Animated shimmer outline for animated themes */}
+      {isAnimated && !active && (
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: 14, pointerEvents: 'none', zIndex: 1,
+          background: `linear-gradient(90deg, transparent 0%, ${t.primary}22 50%, transparent 100%)`,
+          backgroundSize: '200% 100%',
+          animation: 'shimmer-border 2.5s linear infinite',
+        }} />
+      )}
+
+      {/* ── Mini Preview ── */}
+      <div style={{ display: 'flex', height: 108, background: mainBg, borderRadius: '13px 13px 0 0', overflow: 'hidden', position: 'relative' }}>
+        {/* Sidebar strip */}
+        <div style={{ width: '30%', background: t.sidebarGrad, display: 'flex', flexDirection: 'column', padding: '9px 7px', gap: 5, flexShrink: 0, zIndex: 1 }}>
+          <div style={{ width: '75%', height: 7, borderRadius: 4, background: 'rgba(255,255,255,0.5)' }} />
+          {[1,2,3,4].map(i => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <div style={{ width: 5, height: 5, borderRadius: 2, background: i===1 ? '#fff' : 'rgba(255,255,255,0.3)', flexShrink: 0 }} />
+              <div style={{ flex: 1, height: 4, borderRadius: 2, background: i===1 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)' }} />
+            </div>
+          ))}
+        </div>
+        {/* Main content area */}
+        <div style={{ flex: 1, padding: '9px 8px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 1 }}>
+            <div style={{ width: '38%', height: 5, borderRadius: 3, background: t.primary, opacity: 0.7 }} />
+            <div style={{ width: 13, height: 6, borderRadius: 4, background: t.primary }} />
+          </div>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {[t.primary, '#F59E0B', '#10B981'].map((c, ci) => (
+              <div key={ci} style={{ flex: 1, height: 18, borderRadius: 5, background: c, opacity: 0.85 }} />
+            ))}
+          </div>
+          {[1,2,3].map(r => (
+            <div key={r} style={{
+              width: '100%', height: 6, borderRadius: 3,
+              background: isAnimated ? `${t.primary}25` : (t.accent || '#fff'),
+              border: `1px solid ${t.primary}30`,
+            }} />
+          ))}
+        </div>
+        {/* Animated badge in preview */}
+        {isAnimated && (
+          <div style={{
+            position: 'absolute', top: 6, right: 6, zIndex: 2,
+            background: t.primary, color: '#fff',
+            fontSize: 7, fontWeight: 800, padding: '2px 5px', borderRadius: 6,
+            textTransform: 'uppercase', letterSpacing: 0.5,
+            boxShadow: `0 0 8px ${t.primary}80`,
+          }}>✦ LIVE</div>
+        )}
+      </div>
+
+      {/* ── Card Footer ── */}
+      <div style={{ padding: '11px 13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 15 }}>{t.emoji}</span>
+            <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--text)' }}>{t.label}</span>
+            {active && (
+              <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 20, background: t.primary, color: '#fff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Active</span>
+            )}
+            {isAnimated && !active && (
+              <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 20, background: `${t.primary}22`, color: t.primary, border: `1px solid ${t.primary}44`, textTransform: 'uppercase', letterSpacing: 0.3 }}>Anim</span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.4 }}>{t.desc}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 3, flexShrink: 0, marginLeft: 6 }}>
+          <div style={{ width: 11, height: 11, borderRadius: '50%', background: t.sidebarGrad, border: '1.5px solid rgba(0,0,0,0.1)' }} />
+          <div style={{ width: 11, height: 11, borderRadius: '50%', background: t.primary, border: '1.5px solid rgba(0,0,0,0.1)', boxShadow: `0 0 4px ${t.primary}60` }} />
+          <div style={{ width: 11, height: 11, borderRadius: '50%', background: t.bg, border: '1.5px solid rgba(0,0,0,0.1)' }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
-  const { showToast, hasPermission, user: currentUser } = useApp();
+  const { showToast, hasPermission, user: currentUser, theme, setTheme } = useApp();
   const isCompany = currentUser?.type === 'company';
-  const [activeTab, setActiveTab] = useState('users');
+  const [activeTab, setActiveTab] = useState('themes');
   const [masters, setMasters] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -193,6 +392,7 @@ export default function Settings() {
       {/* Tab Bar */}
       <div className="tab-bar" style={{ marginBottom: 20 }}>
         {[
+          { id: 'themes', label: '🎨 Themes' },
           { id: 'masters', label: 'Masters' },
           { id: 'users', label: 'Users' },
           { id: 'roles', label: 'Roles & Permissions' },
@@ -200,6 +400,60 @@ export default function Settings() {
           <button key={tab.id} className={`tab-btn${activeTab === tab.id ? ' active' : ''}`} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>
         ))}
       </div>
+
+      {/* ── Themes ── */}
+      {activeTab === 'themes' && (
+        <div>
+          <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
+            Choose a theme to personalise the entire interface — sidebar, navigation, cards and dashboard all update instantly.
+          </p>
+
+          {/* Section labels */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Static</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          </div>
+
+          {/* Theme Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, marginBottom: 28 }}>
+            {THEMES.filter(t => !t.animated).map(t => <ThemeCard key={t.id} t={t} active={theme === t.id} onSelect={() => { setTheme(t.id); showToast(`${t.label} theme applied ✨`, 'success'); }} />)}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, background: 'linear-gradient(90deg,#22D3EE,#FF2D78,#8B5CF6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>✦ Animated</span>
+            <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, rgba(34,211,238,0.4), rgba(255,45,120,0.4), rgba(139,92,246,0.4), transparent)' }} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, marginBottom: 20 }}>
+            {THEMES.filter(t => t.animated).map(t => <ThemeCard key={t.id} t={t} active={theme === t.id} onSelect={() => { setTheme(t.id); showToast(`${t.label} theme applied ✨`, 'success'); }} />)}
+          </div>
+
+          {/* Current theme info bar */}
+          <div style={{
+            marginTop: 24, padding: '14px 20px', borderRadius: 12,
+            background: 'var(--card-bg)', border: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', gap: 14,
+          }}>
+            {(() => {
+              const cur = THEMES.find(t => t.id === theme) || THEMES[0];
+              return (
+                <>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: cur.sidebarGrad, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>
+                      {cur.emoji} {cur.label} <span style={{ fontWeight: 400, color: 'var(--muted)' }}>is currently active</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{cur.desc}</div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)', textAlign: 'right' }}>
+                    Theme saved to browser<br />
+                    <span style={{ fontSize: 10 }}>Persists across sessions</span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Masters */}
       {activeTab === 'masters' && (
