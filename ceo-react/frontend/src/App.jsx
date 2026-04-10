@@ -40,7 +40,7 @@ export default function App() {
       const res = await api.login(username, password);
       if (res.success && res.user) {
         // Add admin flag + registered-companies permission for admin accounts
-        const userData = { ...res.user };
+        const userData = { ...res.user, type: 'ceo' };
         if (userData.role === 'CEO' || username === 'ca' || username === 'CA') {
           if (!userData.permissions.includes('registered-companies')) {
             userData.permissions = [...userData.permissions, 'registered-companies'];
