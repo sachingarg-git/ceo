@@ -184,4 +184,86 @@ router.delete('/roles/:id', async (req, res) => {
   }
 });
 
+// ── Online Presence ──────────────────────────────────────────────────────────
+
+// POST /api/auth/heartbeat — called by frontend every 30s to mark user online
+router.post('/heartbeat', async (req, res) => {
+  try {
+    const { userId, userName, userType, companyId } = req.body;
+    if (!userId) return res.json({ success: false });
+
+    // Auto-create ActiveSessions table if not exists
+    await query(`
+      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ActiveSessions' AND xtype='U')
+      CREATE TABLE ActiveSessions (
+        SessionKey NVARCHAR(100) PRIMARY KEY,
+        UserID NVARCHAR(50),
+        UserName NVARCHAR(200),
+        UserType NVARCHAR(50),
+        CompanyID INT,
+        LastSeen DATETIME DEFAULT GETDATE()
+      )
+    `);
+
+    const sessionKey = `${userType}_${userId}`;
+    await query(`
+      MERGE ActiveSessions AS target
+      USING (SELECT @sessionKey AS SessionKey) AS source ON target.SessionKey = source.SessionKey
+      WHEN MATCHED THEN UPDATE SET LastSeen=GETDATE(), UserName=@userName
+      WHEN NOT MATCHED THEN INSERT (SessionKey, UserID, UserName, UserType, CompanyID, LastSeen)
+        VALUES (@sessionKey, @userId, @userName, @userType, @companyId, GETDATE());
+    `, { sessionKey, userId: String(userId), userName: userName || 'Unknown', userType: userType || 'user', companyId: companyId || 0 });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/auth/online-users — CEO only: returns count + list of online users
+router.get('/online-users', async (req, res) => {
+  try {
+    // Only allow CEO (companyId = 0)
+    if (req.companyId !== 0) return res.status(403).json({ success: false, error: 'Forbidden' });
+
+    await query(`
+      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ActiveSessions' AND xtype='U')
+      CREATE TABLE ActiveSessions (
+        SessionKey NVARCHAR(100) PRIMARY KEY,
+        UserID NVARCHAR(50),
+        UserName NVARCHAR(200),
+        UserType NVARCHAR(50),
+        CompanyID INT,
+        LastSeen DATETIME DEFAULT GETDATE()
+      )
+    `);
+
+    const r = await query(`
+      SELECT SessionKey, UserName, UserType, CompanyID, LastSeen
+      FROM ActiveSessions
+      WHERE LastSeen > DATEADD(minute, -2, GETDATE())
+      ORDER BY LastSeen DESC
+    `);
+
+    const sessions = r.recordset;
+    const companies = sessions.filter(s => s.UserType === 'company');
+    const users = sessions.filter(s => s.UserType !== 'company');
+
+    res.json({
+      success: true,
+      total: sessions.length,
+      companies: companies.length,
+      users: users.length,
+      list: sessions.map(s => ({
+        name: s.UserName,
+        type: s.UserType,
+        companyId: s.CompanyID,
+        lastSeen: s.LastSeen,
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

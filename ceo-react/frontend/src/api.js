@@ -62,6 +62,8 @@ export const api = {
 
   // Auth
   login: (username, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  heartbeat: (data) => request('/auth/heartbeat', { method: 'POST', body: JSON.stringify(data) }),
+  getOnlineUsers: () => request('/auth/online-users'),
 
   // Users
   getUsers: () => request('/auth/users'),

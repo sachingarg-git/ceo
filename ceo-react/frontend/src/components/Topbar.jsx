@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../App';
+import { api } from '../api';
 
 function ISTClock() {
   const [time, setTime] = useState('');
@@ -45,6 +46,81 @@ const PAGE_TITLES = {
   'registered-companies': 'Registered Companies',
 };
 
+function OnlineIndicator({ user }) {
+  const [online, setOnline] = useState({ total: 0, companies: 0, users: 0, list: [] });
+  const [showPopup, setShowPopup] = useState(false);
+  const isCEO = user?.type === 'ceo' || !user?.companyId || user?.companyId === 0;
+
+  // Heartbeat — send every 30s
+  useEffect(() => {
+    if (!user) return;
+    const ping = () => api.heartbeat({
+      userId: user.id || user.username,
+      userName: user.name || user.username,
+      userType: user.type || 'user',
+      companyId: user.companyId || 0,
+    }).catch(() => {});
+    ping();
+    const hb = setInterval(ping, 30000);
+    return () => clearInterval(hb);
+  }, [user]);
+
+  // Poll online count every 30s (CEO only)
+  useEffect(() => {
+    if (!isCEO) return;
+    const fetch = () => api.getOnlineUsers().then(r => { if (r.success) setOnline(r); }).catch(() => {});
+    fetch();
+    const id = setInterval(fetch, 30000);
+    return () => clearInterval(id);
+  }, [isCEO]);
+
+  if (!isCEO) return null;
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div onClick={() => setShowPopup(v => !v)} style={{
+        display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+        background: 'linear-gradient(135deg,#10B981,#059669)', borderRadius: 10,
+        padding: '5px 12px',
+      }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 2px rgba(255,255,255,0.4)', display: 'inline-block', animation: 'pulse-dot 2s infinite' }} />
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{online.total} Online</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.8)' }}>🏢{online.companies} 👤{online.users}</span>
+      </div>
+
+      {showPopup && (
+        <div onClick={e => e.stopPropagation()} style={{
+          position: 'absolute', top: '110%', right: 0, width: 260,
+          background: 'var(--card-bg)', border: '1px solid var(--border)',
+          borderRadius: 14, boxShadow: '0 8px 30px rgba(0,0,0,0.15)', zIndex: 999, overflow: 'hidden',
+        }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>🟢 Live Users Online</span>
+            <button onClick={() => setShowPopup(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16 }}>✕</button>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {online.list.length === 0 ? (
+              <div style={{ padding: 20, textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>No one online</div>
+            ) : online.list.map((u, i) => (
+              <div key={i} style={{ padding: '9px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', flexShrink: 0, display: 'inline-block' }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{u.name}</div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)' }}>{u.type === 'company' ? '🏢 Company' : '👤 User'}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ padding: '8px 16px', background: 'var(--bg)', fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
+            Auto-refreshes every 30s
+          </div>
+        </div>
+      )}
+      <style>{`@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
+    </div>
+  );
+}
+
 export default function Topbar({ onToggleSidebar }) {
   const { currentPage, user, theme, toggleTheme } = useApp();
 
@@ -55,6 +131,7 @@ export default function Topbar({ onToggleSidebar }) {
         <h3 className="topbar-title">{PAGE_TITLES[currentPage] || currentPage}</h3>
       </div>
       <div className="topbar-right">
+        <OnlineIndicator user={user} />
         <ISTClock />
         <button onClick={toggleTheme} className="theme-toggle-btn" title={theme === 'light' ? 'Switch to Dark' : 'Switch to Light'}>
           {theme === 'light' ? (
