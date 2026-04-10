@@ -49,7 +49,7 @@ const PAGE_TITLES = {
 function OnlineIndicator({ user }) {
   const [online, setOnline] = useState({ total: 0, companies: 0, users: 0, list: [] });
   const [showPopup, setShowPopup] = useState(false);
-  const isCEO = user?.type === 'ceo' || !user?.companyId || user?.companyId === 0;
+  const isCEO = user?.type === 'ceo';
 
   // Heartbeat — send every 30s
   useEffect(() => {
