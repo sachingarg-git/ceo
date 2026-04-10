@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../db');
+const { sendApprovalEmail } = require('../mailer');
 
 const GST_API_URL = 'https://javabackend.idspay.in/api/v1/prod/srv2/validation/kyb/gst-advance';
 const GST_API_ID = 'APID0680';
@@ -82,10 +83,13 @@ router.post('/verify-gst', async (req, res) => {
 // POST /api/companies/signup - Complete registration
 router.post('/signup', async (req, res) => {
   try {
-    const { gstin, registeredMobile, username, password, gstData } = req.body;
+    const { gstin, registeredMobile, username, password, userEmail, gstData } = req.body;
 
     if (!gstin || !username || !password) {
       return res.json({ success: false, error: 'GSTIN, username and password are required' });
+    }
+    if (!userEmail || !userEmail.includes('@')) {
+      return res.json({ success: false, error: 'A valid email address is required' });
     }
 
     // Check duplicates
@@ -102,11 +106,11 @@ router.post('/signup', async (req, res) => {
     const result = await query(
       `INSERT INTO Companies (GSTIN, LegalName, TradeName, BusinessType, RegistrationDate, GSTStatus,
         StateJurisdiction, CentralJurisdiction, Address, Pincode, ContactName, ContactMobile, ContactEmail,
-        RegisteredMobile, Username, Password, GSTRawResponse)
+        RegisteredMobile, Username, Password, UserEmail, GSTRawResponse)
        OUTPUT INSERTED.ID
        VALUES (@gstin, @legalName, @tradeName, @businessType, @regDate, @gstStatus,
         @stateJur, @centralJur, @address, @pincode, @contactName, @contactMobile, @contactEmail,
-        @regMobile, @username, @password, @rawResponse)`,
+        @regMobile, @username, @password, @userEmail, @rawResponse)`,
       {
         gstin,
         legalName: gstData?.legalName || '',
@@ -124,6 +128,7 @@ router.post('/signup', async (req, res) => {
         regMobile: registeredMobile || '',
         username,
         password,
+        userEmail: userEmail.trim().toLowerCase(),
         rawResponse: JSON.stringify(gstData || {}),
       }
     );
@@ -190,6 +195,7 @@ router.get('/', async (req, res) => {
       contactName: c.ContactName || '',
       contactEmail: c.ContactEmail || '',
       username: c.Username || '',
+      userEmail: c.UserEmail || '',
       approvalStatus: (c.ApprovalStatus || 'Pending').toLowerCase(),
       createdAt: c.CreatedAt,
       lastLogin: c.LastLogin,
@@ -215,15 +221,44 @@ router.put('/:id/password', async (req, res) => {
   }
 });
 
-// PUT /api/companies/:id/approve - Approve company
+// PUT /api/companies/:id/approve - Approve company + send welcome email
 router.put('/:id/approve', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+
+    // Fetch company details before approving (need credentials + email)
+    const compRes = await query(
+      'SELECT LegalName, TradeName, Username, Password, UserEmail FROM Companies WHERE ID = @id',
+      { id }
+    );
+
     await query(
       'UPDATE Companies SET ApprovalStatus = @status, ApprovedAt = GETDATE() WHERE ID = @id',
       { status: 'Approved', id }
     );
-    res.json({ success: true, message: 'Company approved' });
+
+    // Send welcome email if we have a UserEmail
+    if (compRes.recordset.length > 0) {
+      const c = compRes.recordset[0];
+      const toEmail = c.UserEmail;
+      const companyName = (c.TradeName && c.TradeName !== 'NA' ? c.TradeName : c.LegalName) || c.Username;
+
+      if (toEmail) {
+        // Fire-and-forget — don't block the approve response on email
+        sendApprovalEmail({
+          toEmail,
+          companyName,
+          username: c.Username,
+          password: c.Password,
+        }).then(r => {
+          if (!r.success) console.error('Approval email failed:', r.error);
+        });
+      } else {
+        console.warn(`Company ID ${id} approved but has no UserEmail — skipping email.`);
+      }
+    }
+
+    res.json({ success: true, message: 'Company approved — welcome email sent!' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

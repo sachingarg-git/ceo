@@ -102,7 +102,8 @@ export default function RegisteredCompanies() {
         (c.gstin || '').toLowerCase().includes(s) ||
         (c.legalName || '').toLowerCase().includes(s) ||
         (c.tradeName || '').toLowerCase().includes(s) ||
-        (c.username || '').toLowerCase().includes(s)
+        (c.username || '').toLowerCase().includes(s) ||
+        (c.userEmail || '').toLowerCase().includes(s)
       );
     }
     return true;
@@ -190,6 +191,7 @@ export default function RegisteredCompanies() {
                   <th>GST Status</th>
                   <th>Registered Mobile</th>
                   <th>Username</th>
+                  <th>Email</th>
                   <th>Approval Status</th>
                   <th>Registered Date</th>
                   <th>Actions</th>
@@ -211,6 +213,12 @@ export default function RegisteredCompanies() {
                       <td>{c.gstStatus || '-'}</td>
                       <td>{c.registeredMobile || '-'}</td>
                       <td>{c.username || '-'}</td>
+                      <td style={{ fontSize: 11 }}>
+                        {c.userEmail
+                          ? <a href={`mailto:${c.userEmail}`} onClick={e => e.stopPropagation()} style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>{c.userEmail}</a>
+                          : <span style={{ color: 'var(--muted)' }}>—</span>
+                        }
+                      </td>
                       <td>{statusBadge(status)}</td>
                       <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '-'}</td>
                       <td onClick={e => e.stopPropagation()}>
@@ -262,9 +270,19 @@ export default function RegisteredCompanies() {
                 <ModalDetail label="Central Jurisdiction" value={detailModal.centralJurisdiction} />
                 <ModalDetail label="Contact Name" value={detailModal.contactName} />
                 <ModalDetail label="Contact Mobile" value={detailModal.contactMobile} />
-                <ModalDetail label="Contact Email" value={detailModal.contactEmail} />
+                <ModalDetail label="Contact Email (GST)" value={detailModal.contactEmail} />
                 <ModalDetail label="Username" value={detailModal.username} />
                 <ModalDetail label="Registered Mobile" value={detailModal.registeredMobile} />
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4, fontWeight: 700 }}>Login / Notification Email</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--primary)' }}>
+                    {detailModal.userEmail
+                      ? <a href={`mailto:${detailModal.userEmail}`} style={{ color: 'var(--primary)', textDecoration: 'none' }}>✉ {detailModal.userEmail}</a>
+                      : <span style={{ color: 'var(--muted)', fontWeight: 400 }}>Not provided</span>
+                    }
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>Approval email with credentials is sent to this address</div>
+                </div>
                 <ModalDetail label="Approval Status" value={
                   <span>{statusBadge(detailModal.approvalStatus)}</span>
                 } />

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { api } from '../api';
 
 const STEPS = [
-  { num: 1, label: 'GST Verification' },
+  { num: 1, label: 'GST Verify' },
   { num: 2, label: 'Company Details' },
   { num: 3, label: 'Mobile Number' },
   { num: 4, label: 'Create Account' },
@@ -16,6 +16,7 @@ export default function SignUp({ onBackToLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [userEmail, setUserEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -35,11 +36,12 @@ export default function SignUp({ onBackToLogin }) {
 
   async function handleCompleteRegistration() {
     if (!username.trim()) { setError('Username is required'); return; }
+    if (!userEmail.trim() || !userEmail.includes('@')) { setError('A valid email address is required'); return; }
     if (password.length < 4) { setError('Password must be at least 4 characters'); return; }
     if (password !== confirmPassword) { setError('Passwords do not match'); return; }
     setLoading(true); setError('');
     try {
-      const res = await api.companySignup({ gstin, registeredMobile: mobile, username, password, gstData });
+      const res = await api.companySignup({ gstin, registeredMobile: mobile, username, password, userEmail, gstData });
       if (res.success) setSuccess(true);
       else setError(res.error || 'Registration failed.');
     } catch { setError('Network error.'); }
@@ -52,9 +54,16 @@ export default function SignUp({ onBackToLogin }) {
         <div style={{ ...card, textAlign: 'center', maxWidth: 440 }}>
           <div style={{ width: 70, height: 70, borderRadius: '50%', background: 'linear-gradient(135deg, #10B981, #34D399)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: '#fff', marginBottom: 16 }}>&#10003;</div>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: '#1E293B', marginBottom: 8 }}>Registration Submitted!</h2>
-          <p style={{ fontSize: 13, color: '#64748B', marginBottom: 24, lineHeight: 1.7 }}>
-            Your company registration has been submitted successfully.<br />Please wait for admin approval before logging in.
+          <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.7 }}>
+            Your company registration has been submitted successfully.<br />
+            Please wait for admin approval before logging in.
           </p>
+          <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '12px 16px', marginBottom: 20, textAlign: 'left' }}>
+            <div style={{ fontSize: 12, color: '#166534', fontWeight: 600, marginBottom: 4 }}>📧 What happens next?</div>
+            <div style={{ fontSize: 12, color: '#166534', lineHeight: 1.7 }}>
+              Once our admin reviews and approves your account, you will receive a <strong>welcome email</strong> at <strong style={{ color: '#15803D' }}>{userEmail}</strong> with your login credentials and a direct link to access the platform.
+            </div>
+          </div>
           <button style={primaryBtn} onClick={onBackToLogin}>Back to Login</button>
         </div>
       </div>
@@ -166,14 +175,31 @@ export default function SignUp({ onBackToLogin }) {
         {step === 4 && (
           <>
             <h2 style={heading}>Create Account</h2>
-            <p style={subText}>Set up your login credentials</p>
+            <p style={subText}>Set up your login credentials — approval confirmation will be sent to your email</p>
             <div style={formGroup}>
               <label style={label}>Username</label>
-              <input style={input} type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="Choose a username" />
+              <input style={input} type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="Choose a username" autoComplete="off" />
+            </div>
+            <div style={formGroup}>
+              <label style={label}>Email Address <span style={{ color: '#EF4444' }}>*</span></label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  style={{ ...input, paddingLeft: 40 }}
+                  type="email"
+                  value={userEmail}
+                  onChange={e => setUserEmail(e.target.value)}
+                  placeholder="your@company.com"
+                  autoComplete="email"
+                />
+                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 15, opacity: 0.4 }}>✉</span>
+              </div>
+              <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 4 }}>
+                Your login credentials will be emailed here once approved by admin
+              </div>
             </div>
             <div style={formGroup}>
               <label style={label}>Password</label>
-              <input style={input} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Create a password" />
+              <input style={input} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Create a password (min 4 chars)" />
             </div>
             <div style={formGroup}>
               <label style={label}>Confirm Password</label>

@@ -251,6 +251,13 @@ async function initDatabase() {
   `);
   console.log('Companies table ready.');
 
+  // Add UserEmail column if not exists (login/contact email for the registered user)
+  await p.request().query(`
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'UserEmail')
+    ALTER TABLE Companies ADD UserEmail NVARCHAR(150)
+  `);
+  console.log('Companies.UserEmail column ready.');
+
   // CompanyUsers table (sub-users under a company, max 3 per company)
   await p.request().query(`
     IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='CompanyUsers' AND xtype='U')
