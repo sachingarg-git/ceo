@@ -52,7 +52,7 @@ bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   const session = await getSession(chatId);
   if (session) {
-    bot.sendMessage(chatId, `✅ Already verified as *${session.CompanyName}*!\n\nCommands:\n/today - Today's tasks\n/upcoming - Upcoming tasks\n/overdue - Overdue tasks\n/add - Add new task\n/edit - Edit task status\n/done - Mark task done\n/help - All commands`, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, `✅ Already verified as *${session.CompanyName}*!\n\nCommands:\n/today - Today's tasks\n/upcoming - Upcoming tasks\n/overdue - Overdue tasks\n/add - Add new task\n/edit - Edit task status\n/done - Mark task done\n/mycompany - Check linked company\n/help - All commands`, { parse_mode: 'Markdown' });
     return;
   }
   bot.sendMessage(chatId, `👋 Welcome to *EA to M.D Bot*!\n\nPlease share your phone number to verify your company identity.`, {
@@ -93,7 +93,7 @@ bot.on('contact', async (msg) => {
     WHEN NOT MATCHED THEN INSERT (ChatID, CompanyID, PhoneNumber, CompanyName) VALUES (@chatId, @companyId, @phone, @name);
   `, { chatId, companyId: company.ID, phone, name: company.LegalName });
 
-  bot.sendMessage(chatId, `✅ *Verified! Welcome, ${company.LegalName}!*\n\nYour bot is now active. Here's what you can do:\n\n📋 /today - Today's tasks\n📅 /upcoming - Upcoming tasks\n⚠️ /overdue - Overdue tasks\n➕ /add - Add new task\n✏️ /edit - Edit task status\n✅ /done - Mark task done\n❓ /help - All commands`, {
+  bot.sendMessage(chatId, `✅ *Verified! Welcome, ${company.LegalName}!*\n\nYour bot is now active. Here's what you can do:\n\n📋 /today - Today's tasks\n📅 /upcoming - Upcoming tasks\n⚠️ /overdue - Overdue tasks\n➕ /add - Add new task\n✏️ /edit - Edit task status\n✅ /done - Mark task done\n🏢 /mycompany - Check linked company\n❓ /help - All commands`, {
     parse_mode: 'Markdown',
     reply_markup: { remove_keyboard: true }
   });
@@ -624,7 +624,29 @@ bot.on('callback_query', async (query_cb) => {
 
 // /help
 bot.onText(/\/help/, (msg) => {
-  bot.sendMessage(msg.chat.id, `🤖 *EA to M.D Bot - Commands:*\n\n/today - Today's tasks\n/upcoming - Upcoming tasks\n/overdue - Overdue tasks\n/add - Create new task (interactive)\n/edit - Edit task (Status/Send To)\n/done - Mark task done\n/help - Show this menu\n\n_Notifications are sent automatically every morning at 9 AM and evening at 6 PM._`, { parse_mode: 'Markdown' });
+  bot.sendMessage(msg.chat.id, `🤖 *EA to M.D Bot - Commands:*\n\n/today - Today's tasks\n/upcoming - Upcoming tasks\n/overdue - Overdue tasks\n/add - Create new task (interactive)\n/edit - Edit task (Status/Send To)\n/done - Mark task done\n/mycompany - Check linked company\n/help - Show this menu\n\n_Notifications are sent automatically every morning at 9 AM and evening at 6 PM._`, { parse_mode: 'Markdown' });
+});
+
+// /mycompany - Show linked company info
+bot.onText(/\/mycompany/, async (msg) => {
+  const chatId = msg.chat.id;
+  const session = await getSession(chatId);
+  
+  if (!session) {
+    bot.sendMessage(chatId, '❌ *Not verified!*\n\nSend /start to verify your identity and link your company.', { parse_mode: 'Markdown' });
+    return;
+  }
+  
+  // Get company details
+  const r = await query('SELECT ID, LegalName, TradeName, RegisteredMobile, ContactEmail FROM Companies WHERE ID = @cid', { cid: session.CompanyID });
+  
+  if (!r.recordset.length) {
+    bot.sendMessage(chatId, '❌ Company not found in database!', { parse_mode: 'Markdown' });
+    return;
+  }
+  
+  const company = r.recordset[0];
+  bot.sendMessage(chatId, `🏢 *Your Linked Company:*\n\n📌 *Name:* ${company.LegalName || company.TradeName}\n🆔 *Company ID:* ${session.CompanyID}\n📱 *Registered Mobile:* ${company.RegisteredMobile || 'N/A'}\n📧 *Email:* ${company.ContactEmail || 'N/A'}\n✅ *Verified Phone:* ${session.PhoneNumber}\n\n_All your tasks are synced with this company._\n\nWrong company? Contact admin or re-verify with /start`, { parse_mode: 'Markdown' });
 });
 
 // CRON: Morning 9 AM IST
