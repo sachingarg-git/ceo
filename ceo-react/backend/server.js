@@ -14,7 +14,7 @@ const usersRouter = require('./routes/users');
 const companiesRouter = require('./routes/companies');
 
 const app = express();
-const PORT = process.env.PORT || 4500;
+const PORT = process.env.PORT || 4567;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));

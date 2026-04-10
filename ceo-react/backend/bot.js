@@ -5,7 +5,8 @@ const { query } = require('./db');
 const TOKEN = '8607668575:AAGgDYBg0SwKIWTfGdqT-FJm_L3AIbncm4s';
 const WEBHOOK_URL = 'https://ea.wizone.ai/webhook/telegram';
 
-const bot = new TelegramBot(TOKEN, { webHook: { port: false } });
+// No internal server — Express handles /webhook/telegram and calls bot.processUpdate()
+const bot = new TelegramBot(TOKEN);
 
 // Pending Task State (for interactive /add)
 const pendingTasks = {}; // chatId -> { step, description, timeFrom, timeTo, priority, sendTo, companyId }
