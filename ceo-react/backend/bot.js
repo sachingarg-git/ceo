@@ -38,7 +38,8 @@ async function getTodayISO() {
 }
 
 function fmtTask(t, i) {
-  const date = t.SchedDate ? t.SchedDate.toISOString().split('T')[0] : '';
+  // SchedDate is stored as nvarchar string, not Date object
+  const date = t.SchedDate ? (typeof t.SchedDate === 'string' ? t.SchedDate : t.SchedDate.toISOString().split('T')[0]) : '';
   const timeFrom = t.SchedTimeFrom || '';
   const timeTo = t.SchedTimeTo || '';
   const pri  = t.Priority || '';
@@ -68,12 +69,13 @@ bot.onText(/\/start/, async (msg) => {
 bot.on('contact', async (msg) => {
   const chatId = msg.chat.id;
   const phone = msg.contact.phone_number.replace(/\D/g, '');
+  // Get last 10 digits for matching
+  const last10 = phone.slice(-10);
 
   const result = await query(`
     SELECT TOP 1 ID, LegalName, RegisteredMobile FROM Companies
-    WHERE REPLACE(REPLACE(RegisteredMobile, '+', ''), ' ', '') LIKE '%' + @phone + '%'
-       OR @phone LIKE '%' + REPLACE(REPLACE(RegisteredMobile, '+', ''), ' ', '')
-  `, { phone });
+    WHERE RIGHT(REPLACE(REPLACE(REPLACE(RegisteredMobile, '+', ''), ' ', ''), '-', ''), 10) = @last10
+  `, { last10 });
 
   if (!result.recordset.length) {
     bot.sendMessage(chatId, `❌ *Phone number not found.*\n\nPlease register your company at https://ea.wizone.ai first.`, {
