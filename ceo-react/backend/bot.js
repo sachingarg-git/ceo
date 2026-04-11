@@ -170,6 +170,37 @@ bot.onText(/\/overdue/, async (msg) => {
   });
 });
 
+// Helper to generate date options dynamically
+function getDateOptions() {
+  const dates = [];
+  const today = new Date();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    let label = '';
+    if (i === 0) label = '📅 Today';
+    else if (i === 1) label = '📆 Tomorrow';
+    else label = `📆 ${dayNames[d.getDay()]}, ${d.getDate()} ${monthNames[d.getMonth()]}`;
+    dates.push({ text: label, callback_data: `date_${dateStr}` });
+  }
+  
+  // Convert to rows of 2
+  const rows = [];
+  for (let i = 0; i < dates.length; i += 2) {
+    if (i + 1 < dates.length) {
+      rows.push([dates[i], dates[i+1]]);
+    } else {
+      rows.push([dates[i]]);
+    }
+  }
+  rows.push([{ text: '❌ Cancel', callback_data: 'add_cancel' }]);
+  return rows;
+}
+
 // Time options for selection (AM/PM format to match frontend)
 const timeOptions = [
   [{ text: '🌅 8:00 AM', callback_data: 'timefrom_8:00 AM' }, { text: '🌅 9:00 AM', callback_data: 'timefrom_9:00 AM' }],
@@ -219,12 +250,12 @@ bot.onText(/\/add (.+)/, async (msg, match) => {
   requireAuth(msg, async (session) => {
     const chatId = msg.chat.id;
     const description = match[1].trim();
-    pendingTasks[chatId] = { step: 'timeFrom', description: description, companyId: session.CompanyID };
+    pendingTasks[chatId] = { step: 'selectDate', description: description, companyId: session.CompanyID };
     
-    // Ask for FROM time
-    bot.sendMessage(chatId, `📝 *Task:* ${description}\n\n⏰ *FROM Time select karo:*`, {
+    // Ask for DATE first
+    bot.sendMessage(chatId, `📝 *Task:* ${description}\n\n📅 *Date select karo:*`, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: timeOptions }
+      reply_markup: { inline_keyboard: getDateOptions() }
     });
   });
 });
@@ -240,13 +271,13 @@ bot.on('message', async (msg) => {
   if (!pending) return;
   
   if (pending.step === 'description') {
-    // Got description, now ask for FROM time
+    // Got description, now ask for DATE
     pending.description = msg.text.trim();
-    pending.step = 'timeFrom';
+    pending.step = 'selectDate';
     
-    bot.sendMessage(chatId, `📝 *Task:* ${pending.description}\n\n⏰ *FROM Time select karo:*`, {
+    bot.sendMessage(chatId, `📝 *Task:* ${pending.description}\n\n📅 *Date select karo:*`, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: timeOptions }
+      reply_markup: { inline_keyboard: getDateOptions() }
     });
   }
 });
@@ -310,6 +341,30 @@ bot.on('callback_query', async (query_cb) => {
     bot.answerCallbackQuery(query_cb.id, { text: '❌ Cancelled' });
     bot.editMessageText('❌ Cancelled.', {
       chat_id: chatId, message_id: query_cb.message.message_id
+    });
+    return;
+  }
+
+  // Date selection
+  if (data.startsWith('date_')) {
+    if (!pending || pending.step !== 'selectDate') {
+      bot.answerCallbackQuery(query_cb.id, { text: 'Session expired. Use /add again.' });
+      return;
+    }
+    
+    pending.selectedDate = data.replace('date_', '');
+    pending.step = 'timeFrom';
+    
+    // Format date for display
+    const dateParts = pending.selectedDate.split('-');
+    const displayDate = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+    
+    bot.answerCallbackQuery(query_cb.id);
+    bot.editMessageText(`📝 *Task:* ${pending.description}\n📅 *Date:* ${displayDate}\n\n⏰ *FROM Time select karo:*`, {
+      chat_id: chatId, 
+      message_id: query_cb.message.message_id,
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: timeOptions }
     });
     return;
   }
@@ -444,11 +499,12 @@ bot.on('callback_query', async (query_cb) => {
     }
     
     pending.slStatus = data.replace('slstatus_', '');
-    const today = await getTodayISO();
+    // Use selected date or fallback to today
+    const taskDate = pending.selectedDate || await getTodayISO();
     
     console.log('Creating task with:', {
       task: pending.description,
-      date: today,
+      date: taskDate,
       timeFrom: pending.timeFrom,
       timeTo: pending.timeTo,
       priority: pending.priority,
@@ -464,7 +520,7 @@ bot.on('callback_query', async (query_cb) => {
         VALUES (@task, @date, @timeFrom, @timeTo, @priority, @sendTo, @slStatus, @cid)
       `, { 
         task: pending.description, 
-        date: today, 
+        date: taskDate, 
         timeFrom: pending.timeFrom,
         timeTo: pending.timeTo,
         priority: pending.priority,
@@ -476,8 +532,12 @@ bot.on('callback_query', async (query_cb) => {
       const taskId = result.recordset[0].ID;
       delete pendingTasks[chatId];
       
+      // Format date for display (DD-MM-YYYY)
+      const dateParts = taskDate.split('-');
+      const displayDate = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+      
       bot.answerCallbackQuery(query_cb.id, { text: '✅ Task Created!' });
-      bot.editMessageText(`✅ *Task Added Successfully!*\n\n📝 *Task:* ${pending.description}\n📅 *Date:* ${today}\n⏰ *Time:* ${pending.timeFrom} - ${pending.timeTo}\n🎯 *Priority:* ${pending.priority}\n📍 *Send To:* ${pending.sendTo}\n📊 *Status:* ${pending.slStatus}`, {
+      bot.editMessageText(`✅ *Task Added Successfully!*\n\n📝 *Task:* ${pending.description}\n📅 *Date:* ${displayDate}\n⏰ *Time:* ${pending.timeFrom} - ${pending.timeTo}\n🎯 *Priority:* ${pending.priority}\n📍 *Send To:* ${pending.sendTo}\n📊 *Status:* ${pending.slStatus}`, {
         chat_id: chatId, 
         message_id: query_cb.message.message_id,
         parse_mode: 'Markdown',
