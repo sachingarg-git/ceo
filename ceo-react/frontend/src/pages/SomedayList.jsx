@@ -264,7 +264,7 @@ export default function SomedayList() {
 
       {/* Data Table */}
       <div className="glass-card">
-        <div className="table-container" style={{ overflowX: 'hidden' }}>
+        <div className="table-container" style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
               <tr>
@@ -283,13 +283,13 @@ export default function SomedayList() {
                 <th style={{ width: 90 }}>Frequency</th>
                 <th style={{ width: 110 }}>Next Occurrence</th>
                 <th style={{ width: 140 }}>Notes</th>
-                <th style={{ width: 90 }}>Action</th>
+                <th style={{ width: 100, position: 'sticky', right: 0, background: 'var(--primary)', zIndex: 2 }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {filteredTasks.length === 0 ? (
                 <tr>
-                  <td colSpan={16} style={{ textAlign: 'center', padding: 32, opacity: 0.5 }}>
+                  <td colSpan={16} style={{ textAlign: 'center', padding: 32, color: '#374151', fontWeight: 500 }}>
                     No tasks match the current filter
                   </td>
                 </tr>
@@ -302,82 +302,65 @@ export default function SomedayList() {
                   const conflictInfo = conflict ? getConflictInfo(task, qcSlotMap) : null;
                   const doneKey = `${task.source}-${task.rowNum}`;
 
-                  const rowStyle = {};
+                  const rowStyle = { color: '#111827' };
                   if (isDone) {
-                    rowStyle.background = 'rgba(16, 185, 129, 0.06)';
-                    rowStyle.opacity = 0.7;
+                    rowStyle.background = 'rgba(16, 185, 129, 0.07)';
+                    rowStyle.opacity = 0.78;
+                  } else if (isDue) {
+                    rowStyle.background = 'rgba(255, 152, 0, 0.08)';
                   } else if (isRecurring) {
-                    rowStyle.background = 'rgba(255, 235, 59, 0.08)';
-                  }
-                  if (isDue && !isDone) {
-                    rowStyle.background = 'rgba(255, 152, 0, 0.1)';
+                    rowStyle.background = 'rgba(255, 235, 59, 0.06)';
                   }
 
+                  // shared dark cell style
+                  const cell = { fontSize: 12, fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' };
+                  const cellNormal = { fontSize: 12, fontWeight: 500, color: '#1e293b' };
+
                   return (
-                    <tr
-                      key={task.seq ?? idx}
-                      style={Object.keys(rowStyle).length > 0 ? rowStyle : undefined}
-                    >
-                      <td>{task.seq ?? task.rowNum ?? idx + 1}</td>
+                    <tr key={task.seq ?? idx} style={rowStyle}>
+                      {/* # */}
+                      <td style={{ fontWeight: 700, color: '#374151', fontSize: 12 }}>
+                        {task.seq ?? task.rowNum ?? idx + 1}
+                      </td>
+
+                      {/* Source */}
                       <td>
-                        <span
-                          className={`badge ${task.source === 'QC' ? 'badge-qc' : 'badge-rt'}`}
-                          style={{
-                            fontSize: 10,
-                            padding: '2px 8px',
-                            borderRadius: 10,
-                            fontWeight: 600,
-                            background: task.source === 'QC' ? '#e3f2fd' : '#fff8e1',
-                            color: task.source === 'QC' ? '#1565c0' : '#f57f17',
-                          }}
-                        >
+                        <span style={{
+                          fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700,
+                          background: task.source === 'QC' ? '#dbeafe' : '#fef9c3',
+                          color: task.source === 'QC' ? '#1d4ed8' : '#92400e',
+                          border: `1px solid ${task.source === 'QC' ? '#93c5fd' : '#fcd34d'}`,
+                        }}>
                           {task.source || '-'}
                         </span>
                         {isDue && !isDone && (
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              marginLeft: 4,
-                              fontSize: 9,
-                              padding: '1px 6px',
-                              borderRadius: 8,
-                              fontWeight: 700,
-                              background: '#ff5722',
-                              color: '#fff',
-                              verticalAlign: 'middle',
-                            }}
-                          >
-                            DUE
-                          </span>
+                          <span style={{
+                            display: 'inline-block', marginLeft: 4, fontSize: 9,
+                            padding: '1px 6px', borderRadius: 8, fontWeight: 700,
+                            background: '#ef4444', color: '#fff', verticalAlign: 'middle',
+                          }}>DUE</span>
                         )}
                         {conflict && (
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              marginLeft: 4,
-                              fontSize: 9,
-                              padding: '1px 6px',
-                              borderRadius: 8,
-                              fontWeight: 700,
-                              background: '#d32f2f',
-                              color: '#fff',
-                              verticalAlign: 'middle',
-                              cursor: 'help',
-                            }}
-                            title={conflictInfo ? `Conflicts with: ${conflictInfo}` : 'Time slot conflict with QC task'}
-                          >
+                          <span style={{
+                            display: 'inline-block', marginLeft: 4, fontSize: 9,
+                            padding: '1px 6px', borderRadius: 8, fontWeight: 700,
+                            background: '#b91c1c', color: '#fff', verticalAlign: 'middle', cursor: 'help',
+                          }} title={conflictInfo ? `Conflicts with: ${conflictInfo}` : 'Time slot conflict with QC task'}>
                             CONFLICT
                           </span>
                         )}
                       </td>
-                      <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+
+                      {/* Created */}
+                      <td style={cell}>
                         {task.createdDate ? formatDateTime(task.createdDate) : formatDate(task.schedDate) || '-'}
                       </td>
+
+                      {/* Description */}
                       <td>
                         <div style={{
-                          fontWeight: 500,
+                          fontWeight: 700, fontSize: 13, color: isDone ? '#6b7280' : '#0f172a',
                           textDecoration: isDone ? 'line-through' : 'none',
-                          color: isDone ? 'var(--muted)' : undefined,
                         }}>
                           {task.task}
                         </div>
@@ -388,51 +371,99 @@ export default function SomedayList() {
                           }}>Done</span>
                         )}
                       </td>
+
+                      {/* Priority */}
                       <td>
-                        <span className={priorityBadgeClass(task.priority)}>
+                        <span className={priorityBadgeClass(task.priority)} style={{ fontWeight: 700 }}>
                           {task.priority || 'Low'}
                         </span>
                       </td>
-                      <td style={{ fontSize: 12 }}>{formatDate(task.schedDate) || '-'}</td>
-                      <td style={{ fontSize: 12 }}>{formatDate(task.deadline) || '-'}</td>
-                      <td style={{ fontSize: 12 }}>{task.sendTo || '-'}</td>
-                      <td style={{ fontSize: 12 }}>{task.batchType || '-'}</td>
+
+                      {/* Sched Date */}
+                      <td style={{ ...cell, color: '#0369a1' }}>
+                        {formatDate(task.schedDate) || <span style={{ color: '#9ca3af', fontWeight: 400 }}>-</span>}
+                      </td>
+
+                      {/* Deadline */}
+                      <td style={cell}>
+                        {formatDate(task.deadline) || <span style={{ color: '#9ca3af', fontWeight: 400 }}>-</span>}
+                      </td>
+
+                      {/* Send To */}
+                      <td style={cellNormal}>
+                        {task.sendTo || <span style={{ color: '#9ca3af' }}>-</span>}
+                      </td>
+
+                      {/* Batch Type */}
+                      <td style={cellNormal}>
+                        {task.batchType
+                          ? <span style={{ background: '#f3e8ff', color: '#7c3aed', borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 600 }}>{task.batchType}</span>
+                          : <span style={{ color: '#9ca3af' }}>-</span>
+                        }
+                      </td>
+
+                      {/* SL Status */}
                       <td>
-                        <span className={statusBadgeClass(task.finalStatus || task.baseStatus)}>
+                        <span className={statusBadgeClass(task.finalStatus || task.baseStatus)} style={{ fontWeight: 700 }}>
                           {task.finalStatus || task.baseStatus || '-'}
                         </span>
                       </td>
-                      <td style={{ fontSize: 12 }}>{task.schedTime || task.schedTimeFrom || '-'}</td>
-                      <td style={{ fontSize: 12 }}>{formatTimeTo(task)}</td>
-                      <td style={{ fontSize: 12 }}>
-                        {task.frequency ? (
-                          <span style={{ fontStyle: 'italic' }}>{task.frequency}</span>
-                        ) : '-'}
+
+                      {/* FROM */}
+                      <td style={{ ...cell, color: '#0f766e' }}>
+                        {task.schedTime || task.schedTimeFrom
+                          ? <span style={{ background: '#ccfbf1', color: '#0f766e', borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 700 }}>
+                              {task.schedTime || task.schedTimeFrom}
+                            </span>
+                          : <span style={{ color: '#9ca3af', fontWeight: 400 }}>-</span>
+                        }
                       </td>
-                      <td style={{ fontSize: 12 }}>
-                        {task.nextOccurrence ? formatDate(task.nextOccurrence) : '-'}
+
+                      {/* TO */}
+                      <td style={{ ...cell, color: '#0f766e' }}>
+                        {formatTimeTo(task) !== '-'
+                          ? <span style={{ background: '#ccfbf1', color: '#0f766e', borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 700 }}>
+                              {formatTimeTo(task)}
+                            </span>
+                          : <span style={{ color: '#9ca3af', fontWeight: 400 }}>-</span>
+                        }
                       </td>
+
+                      {/* Frequency */}
+                      <td style={{ fontSize: 12, fontWeight: 600, color: '#6d28d9', fontStyle: task.frequency ? 'italic' : 'normal' }}>
+                        {task.frequency || <span style={{ color: '#9ca3af', fontWeight: 400, fontStyle: 'normal' }}>-</span>}
+                      </td>
+
+                      {/* Next Occurrence */}
+                      <td style={{ ...cell, color: '#b45309' }}>
+                        {task.nextOccurrence ? formatDate(task.nextOccurrence) : <span style={{ color: '#9ca3af', fontWeight: 400 }}>-</span>}
+                      </td>
+
+                      {/* Notes */}
                       <td>
-                        {task.notes ? (
-                          <div
-                            style={{ fontSize: 11, opacity: 0.7, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                            title={task.notes}
-                          >
-                            {task.notes}
-                          </div>
-                        ) : (
-                          <span style={{ opacity: 0.4 }}>-</span>
-                        )}
+                        {task.notes
+                          ? <div style={{ fontSize: 11, fontWeight: 500, color: '#374151', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={task.notes}>
+                              {task.notes}
+                            </div>
+                          : <span style={{ color: '#9ca3af' }}>-</span>
+                        }
                       </td>
-                      <td>
+
+                      {/* Action */}
+                      <td style={{
+                        position: 'sticky', right: 0, zIndex: 1,
+                        background: isDone ? '#f0fdf4' : '#fff',
+                        boxShadow: '-2px 0 6px rgba(0,0,0,0.06)',
+                      }}>
                         <button
                           style={{
-                            fontSize: 10, fontWeight: 600, padding: '4px 10px', borderRadius: 8, border: 'none',
+                            fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 8, border: 'none',
                             cursor: markingDone[doneKey] ? 'wait' : 'pointer',
-                            background: isDone ? '#10b981' : '#f0f0f0',
-                            color: isDone ? '#fff' : 'var(--text-secondary)',
+                            background: isDone ? '#10b981' : '#e0f2fe',
+                            color: isDone ? '#fff' : '#0369a1',
                             transition: 'all 0.2s',
                             whiteSpace: 'nowrap',
+                            boxShadow: isDone ? '0 1px 4px rgba(16,185,129,0.3)' : 'none',
                           }}
                           disabled={markingDone[doneKey]}
                           onClick={() => handleMarkDone(task)}

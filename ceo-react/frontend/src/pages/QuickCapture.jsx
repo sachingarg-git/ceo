@@ -511,158 +511,229 @@ export default function QuickCapture() {
         <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>{filtered.length} tasks</div>
       </div>
 
-      {/* Spreadsheet Table */}
-      <div style={{ borderRadius: 'var(--radius)', overflow: 'hidden', border: '1px solid #e0e8f0' }}>
-        <div className="ss-toolbar">
-          <div className="ss-toolbar-left">
-            <input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} checked={selected.size > 0 && selected.size === filtered.length} />
-            <button className={'ss-del-btn' + (selected.size > 0 ? ' active' : '')} onClick={requestDeleteSelected} disabled={selected.size === 0}>&#10005; Delete</button>
-            {selected.size > 0 && (
-              <button style={{
-                padding: '6px 14px', fontSize: 11, fontWeight: 600, border: '1.5px solid var(--info)',
-                color: 'var(--info)', background: 'var(--info-bg)', borderRadius: 8, cursor: 'pointer',
-                transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 4,
-              }}
-                onMouseOver={e => { e.currentTarget.style.background = 'var(--info)'; e.currentTarget.style.color = '#fff'; }}
-                onMouseOut={e => { e.currentTarget.style.background = 'var(--info-bg)'; e.currentTarget.style.color = 'var(--info)'; }}
-                onClick={bulkSendToInfoSystem}
-              >&#8594; Send to Info System</button>
-            )}
-            {selected.size > 0 && <span className="ss-sel-count">{selected.size} selected</span>}
-          </div>
-        </div>
-        <div style={{ overflowX: 'auto', maxHeight: '60vh', overflowY: 'auto' }}>
-          <table className="ss-table">
-            <thead>
-              <tr>
-                <th style={{ minWidth: 28, width: 28 }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>
-                <th style={{ minWidth: 28, width: 28 }}>#</th>
-                <th style={{ minWidth: 130, width: 130 }}>Created</th>
-                <th style={{ minWidth: 200 }}>Description</th>
-                <th style={{ minWidth: 80, width: 80 }}>Priority</th>
-                <th style={{ minWidth: 115, width: 115 }}>Schedule Date</th>
-                <th style={{ minWidth: 100, width: 100 }}>Deadline</th>
-                <th style={{ minWidth: 115, width: 115 }}>Send To</th>
-                <th style={{ minWidth: 90, width: 90 }}>Batch</th>
-                <th style={{ minWidth: 85, width: 85 }}>SL Status</th>
-                <th style={{ minWidth: 100, width: 100 }}>From</th>
-                <th style={{ minWidth: 100, width: 100 }}>To</th>
-                <th style={{ minWidth: 110, width: 110 }}>Notes</th>
-                <th style={{ minWidth: 50, width: 50 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody ref={tbodyRef} onKeyDown={handleKeyDown}>
-              {filtered.length === 0 ? (
-                <tr><td colSpan={14} style={{ textAlign: 'center', padding: 30, color: 'var(--muted)' }}>
-                  {rows.length === 0 ? <>&#9889; No tasks captured yet. Click "Bulk Add" to get started!</> : 'No tasks match your filters.'}
-                </td></tr>
-              ) : filtered.map((row, idx) => {
-                const hasSchedDate = !!row.schedDate;
-                const fromSlots = hasSchedDate ? getFilteredSlots(row.schedDate, row.id) : [];
-                const toSlotList = getToSlots(row.schedTimeFrom, row.schedDate, row.id);
-                const hasRecurConflict = recurringConflicts.has(row.id);
+      {/* ── Split filtered into active vs completed ── */}
+      {(() => {
+        const activeRows = filtered.filter(r => r.slStatus !== 'Completed');
+        const completedRows = filtered.filter(r => r.slStatus === 'Completed');
 
-                return (
-                  <tr key={row.id} className={row.slStatus === 'Completed' ? 'ss-row-done' : ''}>
-                    {/* 0: checkbox */}
-                    <td data-row={idx} data-col={0} style={{ textAlign: 'center' }}>
-                      <input type="checkbox" className="ss-check" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} />
-                    </td>
-                    {/* 1: # */}
-                    <td data-row={idx} data-col={1} className="ss-num">
-                      {idx + 1}
-                      {hasRecurConflict && (
-                        <span title="Conflicts with a recurring task" style={{ color: 'var(--warning, #f59e0b)', marginLeft: 4, cursor: 'help', fontSize: 13 }}>&#9888;</span>
-                      )}
-                    </td>
-                    {/* 2: Created (read-only) */}
-                    <td data-row={idx} data-col={2} style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                      {formatCreated(row.date, row.time)}
-                    </td>
-                    {/* 3: Description */}
-                    <td data-row={idx} data-col={3} style={{ height: 'auto', verticalAlign: 'top', padding: 0 }}>
-                      <textarea className="ss-cell ss-desc-cell" defaultValue={row.description} title={row.description}
-                        rows={1}
-                        onInput={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-                        onFocus={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-                        onBlur={e => { if (e.target.value !== row.description) handleCellChange(row.id, 'description', e.target.value); }} />
-                    </td>
-                    {/* 4: Priority */}
-                    <td data-row={idx} data-col={4}>
-                      <select className="ss-cell" value={row.priority || ''} onChange={e => handleCellChange(row.id, 'priority', e.target.value)}>
-                        <option value="">-</option>
-                        {(masters?.priority || ['High','Medium','Low']).map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                    </td>
-                    {/* 5: Schedule Date */}
-                    <td data-row={idx} data-col={5}>
-                      <input type="date" className="ss-cell ss-date-only" value={row.schedDate || ''}
-                        onChange={e => handleCellChange(row.id, 'schedDate', e.target.value)} />
-                    </td>
-                    {/* 6: Deadline */}
-                    <td data-row={idx} data-col={6}>
-                      <input type="date" className="ss-cell ss-date-only" value={row.deadline || ''}
-                        onChange={e => handleCellChange(row.id, 'deadline', e.target.value)} />
-                    </td>
-                    {/* 7: Send To */}
-                    <td data-row={idx} data-col={7}>
-                      <select className="ss-cell" value={row.sendTo || ''} onChange={e => handleCellChange(row.id, 'sendTo', e.target.value)}>
-                        <option value="Someday List">Someday List</option><option value="Information System">Information System</option>
-                      </select>
-                    </td>
-                    {/* 8: Batch */}
-                    <td data-row={idx} data-col={8}>
-                      <select className="ss-cell" value={row.batchType || ''} onChange={e => handleCellChange(row.id, 'batchType', e.target.value)}>
-                        <option value="">-</option>
-                        {(masters?.batchType || []).map(b => <option key={b} value={b}>{b}</option>)}
-                      </select>
-                    </td>
-                    {/* 9: SL Status */}
-                    <td data-row={idx} data-col={9}>
-                      <select className="ss-cell" value={row.slStatus || ''} onChange={e => handleCellChange(row.id, 'slStatus', e.target.value)}>
-                        {(masters?.schedStatus || ['Scheduled','Waiting','Completed','Skipped']).map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </td>
-                    {/* 10: From */}
-                    <td data-row={idx} data-col={10}>
-                      <select className="ss-cell" value={row.schedTimeFrom || ''}
-                        disabled={!hasSchedDate}
-                        style={!hasSchedDate ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-                        onChange={e => handleCellChange(row.id, 'schedTimeFrom', e.target.value)}>
-                        <option value="">-</option>
-                        {fromSlots.map(s => (
-                          <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>
-                        ))}
-                      </select>
-                    </td>
-                    {/* 11: To */}
-                    <td data-row={idx} data-col={11}>
-                      <select className="ss-cell" value={row.schedTimeTo || ''}
-                        disabled={!hasSchedDate}
-                        style={!hasSchedDate ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-                        onChange={e => handleCellChange(row.id, 'schedTimeTo', e.target.value)}>
-                        <option value="">-</option>
-                        {Array.isArray(toSlotList) && toSlotList.length > 0 && typeof toSlotList[0] === 'object'
-                          ? toSlotList.map(s => <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>)
-                          : (toSlotList || []).map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </td>
-                    {/* 12: Notes */}
-                    <td data-row={idx} data-col={12}>
-                      <input className="ss-cell" defaultValue={row.notes || ''}
-                        onBlur={e => { if (e.target.value !== (row.notes || '')) handleCellChange(row.id, 'notes', e.target.value); }} />
-                    </td>
-                    {/* 13: Actions */}
-                    <td data-row={idx} data-col={13} style={{ textAlign: 'center' }}>
-                      <button className="ss-del" title="Delete" onClick={() => setDeleteId(row.id)}>&#10005;</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        // shared sticky action th style
+        const stickyTh = {
+          minWidth: 60, width: 60,
+          position: 'sticky', right: 0, zIndex: 3,
+          background: '#1a5f5f', boxShadow: '-2px 0 6px rgba(0,0,0,0.12)',
+        };
+        const stickyTd = (bg = '#fff') => ({
+          textAlign: 'center', position: 'sticky', right: 0, zIndex: 1,
+          background: bg, boxShadow: '-2px 0 5px rgba(0,0,0,0.07)',
+        });
+
+        // shared table header
+        const TableHead = ({ showCheck = true }) => (
+          <thead>
+            <tr>
+              {showCheck && <th style={{ minWidth: 28, width: 28 }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>}
+              <th style={{ minWidth: 28, width: 28 }}>#</th>
+              <th style={{ minWidth: 130, width: 130 }}>Created</th>
+              <th style={{ minWidth: 200 }}>Description</th>
+              <th style={{ minWidth: 80, width: 80 }}>Priority</th>
+              <th style={{ minWidth: 115, width: 115 }}>Schedule Date</th>
+              <th style={{ minWidth: 100, width: 100 }}>Deadline</th>
+              <th style={{ minWidth: 115, width: 115 }}>Send To</th>
+              <th style={{ minWidth: 90, width: 90 }}>Batch</th>
+              <th style={{ minWidth: 85, width: 85 }}>SL Status</th>
+              <th style={{ minWidth: 100, width: 100 }}>From</th>
+              <th style={{ minWidth: 100, width: 100 }}>To</th>
+              <th style={{ minWidth: 110, width: 110 }}>Notes</th>
+              <th style={stickyTh}>Actions</th>
+            </tr>
+          </thead>
+        );
+
+        return (
+          <>
+          {/* ══ GRID 1 — Active Tasks ══════════════════════════════ */}
+          <div style={{ borderRadius: 'var(--radius)', overflow: 'hidden', border: '1px solid #e0e8f0', marginBottom: 20 }}>
+            {/* toolbar */}
+            <div className="ss-toolbar">
+              <div className="ss-toolbar-left">
+                <input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} checked={selected.size > 0 && selected.size === activeRows.length} />
+                <button className={'ss-del-btn' + (selected.size > 0 ? ' active' : '')} onClick={requestDeleteSelected} disabled={selected.size === 0}>&#10005; Delete</button>
+                {selected.size > 0 && (
+                  <button style={{
+                    padding: '6px 14px', fontSize: 11, fontWeight: 600, border: '1.5px solid var(--info)',
+                    color: 'var(--info)', background: 'var(--info-bg)', borderRadius: 8, cursor: 'pointer',
+                    transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                    onMouseOver={e => { e.currentTarget.style.background = 'var(--info)'; e.currentTarget.style.color = '#fff'; }}
+                    onMouseOut={e => { e.currentTarget.style.background = 'var(--info-bg)'; e.currentTarget.style.color = 'var(--info)'; }}
+                    onClick={bulkSendToInfoSystem}
+                  >&#8594; Send to Info System</button>
+                )}
+                {selected.size > 0 && <span className="ss-sel-count">{selected.size} selected</span>}
+                <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: '#0369a1', background: '#e0f2fe', borderRadius: 20, padding: '2px 12px' }}>
+                  📋 Active — {activeRows.length} task{activeRows.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
+            <div style={{ overflowX: 'auto', maxHeight: '55vh', overflowY: 'auto' }}>
+              <table className="ss-table">
+                <TableHead showCheck={true} />
+                <tbody ref={tbodyRef} onKeyDown={handleKeyDown}>
+                  {activeRows.length === 0 ? (
+                    <tr><td colSpan={14} style={{ textAlign: 'center', padding: 30, color: 'var(--muted)' }}>
+                      {rows.length === 0 ? <>&#9889; No tasks captured yet. Click "Bulk Add" to get started!</> : 'No active tasks match your filters.'}
+                    </td></tr>
+                  ) : activeRows.map((row, idx) => {
+                    const hasSchedDate = !!row.schedDate;
+                    const fromSlots = hasSchedDate ? getFilteredSlots(row.schedDate, row.id) : [];
+                    const toSlotList = getToSlots(row.schedTimeFrom, row.schedDate, row.id);
+                    const hasRecurConflict = recurringConflicts.has(row.id);
+
+                    return (
+                      <tr key={row.id}>
+                        <td data-row={idx} data-col={0} style={{ textAlign: 'center' }}>
+                          <input type="checkbox" className="ss-check" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} />
+                        </td>
+                        <td data-row={idx} data-col={1} className="ss-num">
+                          {idx + 1}
+                          {hasRecurConflict && <span title="Conflicts with a recurring task" style={{ color: '#f59e0b', marginLeft: 4, cursor: 'help', fontSize: 13 }}>&#9888;</span>}
+                        </td>
+                        <td data-row={idx} data-col={2} style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                          {formatCreated(row.date, row.time)}
+                        </td>
+                        <td data-row={idx} data-col={3} style={{ height: 'auto', verticalAlign: 'top', padding: 0 }}>
+                          <textarea className="ss-cell ss-desc-cell" defaultValue={row.description} title={row.description} rows={1}
+                            onInput={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                            onFocus={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                            onBlur={e => { if (e.target.value !== row.description) handleCellChange(row.id, 'description', e.target.value); }} />
+                        </td>
+                        <td data-row={idx} data-col={4}>
+                          <select className="ss-cell" value={row.priority || ''} onChange={e => handleCellChange(row.id, 'priority', e.target.value)}>
+                            <option value="">-</option>
+                            {(masters?.priority || ['High','Medium','Low']).map(p => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                        </td>
+                        <td data-row={idx} data-col={5}>
+                          <input type="date" className="ss-cell ss-date-only" value={row.schedDate || ''} onChange={e => handleCellChange(row.id, 'schedDate', e.target.value)} />
+                        </td>
+                        <td data-row={idx} data-col={6}>
+                          <input type="date" className="ss-cell ss-date-only" value={row.deadline || ''} onChange={e => handleCellChange(row.id, 'deadline', e.target.value)} />
+                        </td>
+                        <td data-row={idx} data-col={7}>
+                          <select className="ss-cell" value={row.sendTo || ''} onChange={e => handleCellChange(row.id, 'sendTo', e.target.value)}>
+                            <option value="Someday List">Someday List</option><option value="Information System">Information System</option>
+                          </select>
+                        </td>
+                        <td data-row={idx} data-col={8}>
+                          <select className="ss-cell" value={row.batchType || ''} onChange={e => handleCellChange(row.id, 'batchType', e.target.value)}>
+                            <option value="">-</option>
+                            {(masters?.batchType || []).map(b => <option key={b} value={b}>{b}</option>)}
+                          </select>
+                        </td>
+                        <td data-row={idx} data-col={9}>
+                          <select className="ss-cell" value={row.slStatus || ''} onChange={e => handleCellChange(row.id, 'slStatus', e.target.value)}>
+                            {(masters?.schedStatus || ['Scheduled','Waiting','Completed','Skipped']).map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </td>
+                        <td data-row={idx} data-col={10}>
+                          <select className="ss-cell" value={row.schedTimeFrom || ''} disabled={!hasSchedDate}
+                            style={!hasSchedDate ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                            onChange={e => handleCellChange(row.id, 'schedTimeFrom', e.target.value)}>
+                            <option value="">-</option>
+                            {fromSlots.map(s => <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>)}
+                          </select>
+                        </td>
+                        <td data-row={idx} data-col={11}>
+                          <select className="ss-cell" value={row.schedTimeTo || ''} disabled={!hasSchedDate}
+                            style={!hasSchedDate ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                            onChange={e => handleCellChange(row.id, 'schedTimeTo', e.target.value)}>
+                            <option value="">-</option>
+                            {Array.isArray(toSlotList) && toSlotList.length > 0 && typeof toSlotList[0] === 'object'
+                              ? toSlotList.map(s => <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>)
+                              : (toSlotList || []).map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </td>
+                        <td data-row={idx} data-col={12}>
+                          <input className="ss-cell" defaultValue={row.notes || ''}
+                            onBlur={e => { if (e.target.value !== (row.notes || '')) handleCellChange(row.id, 'notes', e.target.value); }} />
+                        </td>
+                        <td data-row={idx} data-col={13} style={stickyTd('#fff')}>
+                          <button className="ss-del" title="Delete" onClick={() => setDeleteId(row.id)}>&#10005;</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ══ GRID 2 — Completed Tasks (read-only) ══════════════ */}
+          {completedRows.length > 0 && (
+            <div style={{ borderRadius: 'var(--radius)', overflow: 'hidden', border: '1px solid #a7f3d0' }}>
+              {/* header */}
+              <div style={{
+                padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10,
+                background: 'linear-gradient(90deg, #d1fae5 0%, #ecfdf5 100%)',
+                borderBottom: '1px solid #a7f3d0',
+              }}>
+                <span style={{ fontSize: 18 }}>✅</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#065f46' }}>Completed Tasks</div>
+                  <div style={{ fontSize: 10, color: '#059669' }}>Tasks marked as done — read only view</div>
+                </div>
+                <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#fff', background: '#10b981', borderRadius: 20, padding: '3px 14px' }}>
+                  {completedRows.length} completed
+                </span>
+              </div>
+              <div style={{ overflowX: 'auto', maxHeight: '40vh', overflowY: 'auto' }}>
+                <table className="ss-table">
+                  <thead>
+                    <tr>
+                      <th style={{ minWidth: 28, width: 28 }}>#</th>
+                      <th style={{ minWidth: 130, width: 130 }}>Completed On</th>
+                      <th style={{ minWidth: 220 }}>Description</th>
+                      <th style={{ minWidth: 80, width: 80 }}>Priority</th>
+                      <th style={{ minWidth: 115, width: 115 }}>Schedule Date</th>
+                      <th style={{ minWidth: 115, width: 115 }}>Send To</th>
+                      <th style={{ minWidth: 90, width: 90 }}>Batch</th>
+                      <th style={{ minWidth: 100, width: 100 }}>From</th>
+                      <th style={{ minWidth: 100, width: 100 }}>To</th>
+                      <th style={{ minWidth: 130, width: 130 }}>Notes</th>
+                      <th style={{ ...stickyTh, background: '#065f46' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {completedRows.map((row, idx) => (
+                      <tr key={row.id} style={{ background: 'rgba(16,185,129,0.04)' }}>
+                        <td style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>{idx + 1}</td>
+                        <td style={{ fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap' }}>{formatCreated(row.date, row.time)}</td>
+                        <td>
+                          <div style={{ fontWeight: 600, fontSize: 12, color: '#374151', textDecoration: 'line-through', opacity: 0.75 }}>
+                            {row.description}
+                          </div>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: '#fff', background: '#10b981', padding: '1px 7px', borderRadius: 8, display: 'inline-block', marginTop: 2 }}>Done</span>
+                        </td>
+                        <td><span className={`badge badge-${(row.priority||'low').toLowerCase()}`}>{row.priority||'Low'}</span></td>
+                        <td style={{ fontSize: 11, color: '#6b7280' }}>{row.schedDate || '-'}</td>
+                        <td style={{ fontSize: 11, color: '#6b7280' }}>{row.sendTo || '-'}</td>
+                        <td style={{ fontSize: 11, color: '#6b7280' }}>{row.batchType || '-'}</td>
+                        <td style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>{row.schedTimeFrom || '-'}</td>
+                        <td style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>{row.schedTimeTo || '-'}</td>
+                        <td style={{ fontSize: 11, color: '#6b7280' }}>{row.notes || '-'}</td>
+                        <td style={stickyTd('#f0fdf4')}>
+                          <button className="ss-del" title="Delete" onClick={() => setDeleteId(row.id)} style={{ color: '#dc2626' }}>&#10005;</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          </>
+        );
+      })()}
 
       {/* Add/Edit Task Modal */}
       <div className={'modal-overlay' + (modalOpen ? ' show' : '')} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>

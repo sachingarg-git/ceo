@@ -225,9 +225,15 @@ async function computeSomedayList(companyId) {
   const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
   const todayISO = formatDateISO(today);
 
-  // QC tasks where SendTo = 'Someday List'
+  // QC tasks where SendTo = 'Someday List' AND fully scheduled (date + time both set)
   const qcResult = await query(
-    "SELECT * FROM QuickCapture WHERE SendTo = 'Someday List' AND CompanyID = @companyId ORDER BY ID ASC",
+    `SELECT * FROM QuickCapture
+     WHERE SendTo = 'Someday List'
+       AND CompanyID = @companyId
+       AND SchedDate IS NOT NULL AND SchedDate != ''
+       AND SchedTimeFrom IS NOT NULL AND SchedTimeFrom != ''
+       AND SchedTimeTo IS NOT NULL AND SchedTimeTo != ''
+     ORDER BY ID ASC`,
     { companyId }
   );
 
