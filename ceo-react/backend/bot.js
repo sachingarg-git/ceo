@@ -502,6 +502,14 @@ bot.on('callback_query', async (query_cb) => {
     // Use selected date or fallback to today
     const taskDate = pending.selectedDate || await getTodayISO();
     
+    // Get current date/time for creation timestamp
+    const now = new Date();
+    const creationDate = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+    const creationTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    
+    // Deadline is same as scheduled date
+    const deadline = taskDate;
+    
     console.log('Creating task with:', {
       task: pending.description,
       date: taskDate,
@@ -510,14 +518,17 @@ bot.on('callback_query', async (query_cb) => {
       priority: pending.priority,
       sendTo: pending.sendTo,
       slStatus: pending.slStatus,
-      cid: pending.companyId
+      cid: pending.companyId,
+      creationDate,
+      creationTime,
+      deadline
     });
     
     try {
       const result = await query(`
-        INSERT INTO QuickCapture (Task, SchedDate, SchedTimeFrom, SchedTimeTo, Priority, SendTo, SLStatus, CompanyID)
+        INSERT INTO QuickCapture (Task, SchedDate, SchedTimeFrom, SchedTimeTo, Priority, SendTo, SLStatus, CompanyID, Date, Time, Deadline)
         OUTPUT INSERTED.ID
-        VALUES (@task, @date, @timeFrom, @timeTo, @priority, @sendTo, @slStatus, @cid)
+        VALUES (@task, @date, @timeFrom, @timeTo, @priority, @sendTo, @slStatus, @cid, @creationDate, @creationTime, @deadline)
       `, { 
         task: pending.description, 
         date: taskDate, 
@@ -526,7 +537,10 @@ bot.on('callback_query', async (query_cb) => {
         priority: pending.priority,
         sendTo: pending.sendTo,
         slStatus: pending.slStatus,
-        cid: pending.companyId
+        cid: pending.companyId,
+        creationDate,
+        creationTime,
+        deadline
       });
       
       const taskId = result.recordset[0].ID;

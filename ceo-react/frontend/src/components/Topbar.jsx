@@ -91,13 +91,20 @@ function CalendarDropdown() {
 
       {/* Dropdown panel */}
       {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 10px)', right: 0,
-          width: 320, zIndex: 9999,
-          background: 'var(--card-bg)', border: '1px solid var(--border)',
-          borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
-          overflow: 'visible',
-        }}>
+        <>
+          {/* Invisible bridge to prevent gap issues */}
+          <div style={{
+            position: 'absolute', top: '100%', right: 0,
+            width: 320, height: 12,
+            background: 'transparent',
+          }} />
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+            width: 320, zIndex: 9999,
+            background: 'var(--card-bg)', border: '1px solid var(--border)',
+            borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
+            overflow: 'visible',
+          }}>
           {/* Header */}
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--primary-gradient)', borderRadius: '16px 16px 0 0' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -194,19 +201,31 @@ function CalendarDropdown() {
             </div>
           </div>
         </div>
+        </>
       )}
 
-      {/* Tooltip portal — fixed position so it escapes the dropdown */}
+      {/* Tooltip portal — positioned below the calendar */}
       {tooltip && (() => {
-        const r = tooltip.rect;
-        const left = Math.min(r.right + 10, window.innerWidth - 270);
-        const top  = Math.min(r.top - 10, window.innerHeight - 220);
+        // Get calendar dropdown position
+        const calendarRect = wrapRef.current?.getBoundingClientRect();
+        if (!calendarRect) return null;
+        
+        const popupWidth = 300;
+        
+        // Position below calendar, aligned to calendar's right edge
+        let left = calendarRect.right - popupWidth;
+        let top = calendarRect.bottom + 10; // 10px below calendar
+        
+        // Ensure it stays within viewport bounds
+        left = Math.max(10, Math.min(left, window.innerWidth - popupWidth - 10));
+        
         return (
           <div style={{
             position: 'fixed', left, top, zIndex: 99999,
             background: '#0f172a', color: '#f1f5f9',
             borderRadius: 12, padding: '12px 14px',
-            minWidth: 240, maxWidth: 290,
+            width: popupWidth - 28,
+            maxHeight: 300, overflowY: 'auto',
             boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
             pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.1)',
           }}>
