@@ -48,7 +48,21 @@ function sourceBadge(source) {
 
 export default function DailySchedule() {
   const { showToast } = useApp();
-  const [date, setDate] = useState(formatDateISO(new Date()));
+  const [date, setDate] = useState(() => {
+    // If navigated from calendar widget, use that date (first mount only)
+    const saved = localStorage.getItem('ds_selected_date');
+    if (saved) { localStorage.removeItem('ds_selected_date'); return saved; }
+    return formatDateISO(new Date());
+  });
+
+  // Listen for calendar date-selection events (fires even when already on this page)
+  useEffect(() => {
+    function handleDateSelect(e) {
+      if (e.detail?.date) setDate(e.detail.date);
+    }
+    window.addEventListener('ds-select-date', handleDateSelect);
+    return () => window.removeEventListener('ds-select-date', handleDateSelect);
+  }, []);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rating, setRating] = useState('');
@@ -158,7 +172,8 @@ export default function DailySchedule() {
             schedTime: qc.schedTimeFrom,
             schedTimeTo: qc.schedTimeTo,
             notes: qc.notes || '',
-            finalStatus: qc.slStatus === 'Completed' ? 'Completed' : '',
+            baseStatus: qc.slStatus || 'Scheduled',
+            finalStatus: qc.slStatus === 'Completed' ? 'Completed' : (qc.slStatus || 'Scheduled'),
           },
         });
       } else if (!isOccupied) {
@@ -242,12 +257,28 @@ export default function DailySchedule() {
         </td>
         {/* Time range */}
         <td style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-          {task.schedTimeTo
-            ? <span style={{ background: 'var(--border)', borderRadius: 6, padding: '2px 6px', fontSize: 10 }}>
-                {slot.time} – {task.schedTimeTo}
-              </span>
-            : <span style={{ opacity: 0.3 }}>—</span>
-          }
+          {(() => {
+            // For QC tasks, cross-reference qcRows to get schedTimeFrom/To reliably
+            const qcRow = task.source === 'QC'
+              ? qcRows.find(r => r.id === task.rowNum || r._rowNum === task.rowNum)
+              : null;
+            const fromTime = qcRow?.schedTimeFrom || task.schedTime || slot.time;
+            const toTime   = qcRow?.schedTimeTo   || task.schedTimeTo || '';
+            if (toTime) {
+              return (
+                <span style={{
+                  background: isDone ? 'rgba(16,185,129,0.12)' : 'rgba(14,165,233,0.1)',
+                  border: `1px solid ${isDone ? '#6ee7b7' : '#93c5fd'}`,
+                  borderRadius: 6, padding: '2px 7px', fontSize: 10,
+                  color: isDone ? '#047857' : '#1d4ed8', fontWeight: 600,
+                  display: 'inline-block',
+                }}>
+                  {fromTime} – {toTime}
+                </span>
+              );
+            }
+            return <span style={{ opacity: 0.3 }}>—</span>;
+          })()}
         </td>
         {/* Priority */}
         <td>
@@ -257,22 +288,50 @@ export default function DailySchedule() {
         </td>
         {/* Source */}
         <td>{sourceBadge(task.source)}</td>
-        {/* Mark done */}
+        {/* Status + Mark Done */}
         <td>
-          <button
-            style={{
-              fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 8, border: 'none',
-              cursor: isBusy ? 'wait' : 'pointer',
-              background: isDone ? '#10b981' : 'var(--border)',
-              color: isDone ? '#fff' : 'var(--text-secondary)',
-              transition: 'all 0.2s',
-            }}
-            disabled={isBusy}
-            onClick={() => handleMarkDone(task, !isDone)}
-            title={isDone ? 'Click to unmark' : 'Click to mark done'}
-          >
-            {isBusy ? '...' : isDone ? 'Done ✓' : 'Mark Done'}
-          </button>
+          {(() => {
+            const qcRowForStatus = task.source === 'QC'
+              ? qcRows.find(r => r.id === task.rowNum || r._rowNum === task.rowNum)
+              : null;
+            const status = isDone ? 'Completed'
+              : qcRowForStatus?.slStatus
+              || task.finalStatus || task.baseStatus || 'Scheduled';
+            const statusColors = {
+              Completed: { bg: '#d1fae5', color: '#065f46', border: '#6ee7b7' },
+              Scheduled: { bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd' },
+              Waiting:   { bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
+              Pending:   { bg: '#f3f4f6', color: '#374151', border: '#d1d5db' },
+            };
+            const sc = statusColors[status] || statusColors.Scheduled;
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                {/* Status badge */}
+                <span style={{
+                  fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+                  background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`,
+                  whiteSpace: 'nowrap',
+                }}>
+                  {status === 'Completed' ? '✅ ' : status === 'Scheduled' ? '📋 ' : status === 'Waiting' ? '⏳ ' : ''}{status}
+                </span>
+                {/* Mark Done toggle button */}
+                <button
+                  style={{
+                    fontSize: 9, fontWeight: 600, padding: '2px 8px', borderRadius: 7, border: 'none',
+                    cursor: isBusy ? 'wait' : 'pointer',
+                    background: isDone ? '#6ee7b7' : '#e2e8f0',
+                    color: isDone ? '#065f46' : '#475569',
+                    transition: 'all 0.2s',
+                  }}
+                  disabled={isBusy}
+                  onClick={() => handleMarkDone(task, !isDone)}
+                  title={isDone ? 'Click to unmark done' : 'Click to mark done'}
+                >
+                  {isBusy ? '…' : isDone ? '↩ Unmark' : '✓ Mark Done'}
+                </button>
+              </div>
+            );
+          })()}
         </td>
       </tr>
     );

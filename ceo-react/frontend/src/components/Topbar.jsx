@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { useApp } from '../App';
 import { api } from '../api';
 
@@ -12,21 +13,63 @@ function formatISO(d) {
 
 function CalendarDropdown() {
   const today = formatISO(new Date());
+  const { setCurrentPage, currentPage } = useApp();
   const [open, setOpen]       = useState(false);
   const [qcRows, setQcRows]   = useState([]);
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
-  const [tooltip, setTooltip] = useState(null); // { dateStr, tasks, x, y }
-  const wrapRef = useRef(null);
-  const loaded  = useRef(false);
+  const [tooltip, setTooltip] = useState(null);
+  const [pinned,  setPinned]  = useState(false);  // true = tooltip is locked by a click
+  const wrapRef      = useRef(null);
+  const dropdownRef  = useRef(null);
+  const loaded       = useRef(false);
+  const hideTimer    = useRef(null);
 
-  // Close on outside click
+  // Navigate to Daily Schedule for a specific date
+  function goToDate(dateStr) {
+    localStorage.setItem('ds_selected_date', dateStr);
+    setCurrentPage('daily-schedule');
+    setOpen(false);
+    setTooltip(null);
+    setPinned(false);
+    // Notify DailySchedule immediately — works even if page is already active
+    window.dispatchEvent(new CustomEvent('ds-select-date', { detail: { date: dateStr } }));
+  }
+
+  // Pin tooltip on click (stays visible until click outside)
+  function pinTooltip(data) {
+    clearTimeout(hideTimer.current);
+    setTooltip(data);
+    setPinned(true);
+  }
+
+  // Hover-only helpers — ignored when pinned
+  function showTooltip(data)  { if (pinned) return; clearTimeout(hideTimer.current); setTooltip(data); }
+  function scheduleHide()     { if (pinned) return; hideTimer.current = setTimeout(() => setTooltip(null), 220); }
+  function cancelHide()       { clearTimeout(hideTimer.current); }
+
+  // Clear pin when calendar closes
+  function closeCalendar() { setOpen(false); setTooltip(null); setPinned(false); }
+
+  // Auto-close calendar + tooltip whenever the page changes (e.g. after goToDate navigation)
   useEffect(() => {
-    if (!open) return;
-    function handler(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); }
+    setOpen(false);
+    setTooltip(null);
+    setPinned(false);
+  }, [currentPage]);
+
+  // Close on outside click — also clears pin
+  useEffect(() => {
+    if (!open && !pinned) return;
+    function handler(e) {
+      // also allow clicks inside the portaled tooltip (which is NOT inside wrapRef)
+      const tooltipEl = document.getElementById('cal-tooltip-portal');
+      if (tooltipEl && tooltipEl.contains(e.target)) return;
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) closeCalendar();
+    }
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+  }, [open, pinned]);
 
   // Fetch QC data once on first open
   useEffect(() => {
@@ -67,7 +110,7 @@ function CalendarDropdown() {
     <div ref={wrapRef} style={{ position: 'relative' }}>
       {/* Calendar toggle button */}
       <button
-        onClick={() => setOpen(v => !v)}
+        onClick={() => { if (open) { closeCalendar(); } else { setOpen(true); } }}
         title="Open Calendar"
         style={{
           background: open ? 'var(--primary)' : 'var(--card-bg)',
@@ -98,7 +141,7 @@ function CalendarDropdown() {
             width: 320, height: 12,
             background: 'transparent',
           }} />
-          <div style={{
+          <div ref={dropdownRef} style={{
             position: 'absolute', top: 'calc(100% + 8px)', right: 0,
             width: 320, zIndex: 9999,
             background: 'var(--card-bg)', border: '1px solid var(--border)',
@@ -145,23 +188,33 @@ function CalendarDropdown() {
                 else if (hasSched) { bg = '#dbeafe'; color = '#1d4ed8'; border = '1.5px solid #93c5fd'; }
                 if (isToday)       { border = '2px solid var(--primary)'; }
 
+                const isPinned = pinned && tooltip?.dateStr === ds;
+
                 return (
                   <div
                     key={i}
-                    onMouseEnter={e => {
+                    onClick={() => {
                       if (tasks.length === 0) return;
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setTooltip({ dateStr: ds, tasks, rect });
+                      // If already pinned on this date, unpin
+                      if (isPinned) { setTooltip(null); setPinned(false); return; }
+                      pinTooltip({ dateStr: ds, tasks });
                     }}
-                    onMouseLeave={() => setTooltip(null)}
+                    onMouseEnter={() => {
+                      if (tasks.length === 0) return;
+                      showTooltip({ dateStr: ds, tasks });
+                    }}
+                    onMouseLeave={scheduleHide}
                     style={{
                       textAlign: 'center', borderRadius: 8, cursor: tasks.length ? 'pointer' : 'default',
-                      background: bg, color, border,
+                      background: isPinned ? '#fef9c3' : bg,
+                      color: isPinned ? '#713f12' : color,
+                      border: isPinned ? '2px solid #f59e0b' : border,
                       fontSize: 11, fontWeight: isToday ? 800 : 600,
                       padding: '4px 2px', minHeight: 34,
                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                       transition: 'all 0.12s',
                       position: 'relative',
+                      boxShadow: isPinned ? '0 0 0 2px rgba(245,158,11,0.4)' : undefined,
                     }}
                   >
                     {isToday && (
@@ -204,43 +257,73 @@ function CalendarDropdown() {
         </>
       )}
 
-      {/* Tooltip portal — positioned below the calendar */}
+      {/* Tooltip — portaled to <body> so it escapes any CSS transform/stacking context */}
       {tooltip && (() => {
-        // Get calendar dropdown position
-        const calendarRect = wrapRef.current?.getBoundingClientRect();
-        if (!calendarRect) return null;
-        
-        const popupWidth = 300;
-        
-        // Position below calendar, aligned to calendar's right edge
-        let left = calendarRect.right - popupWidth;
-        let top = calendarRect.bottom + 10; // 10px below calendar
-        
-        // Ensure it stays within viewport bounds
-        left = Math.max(10, Math.min(left, window.innerWidth - popupWidth - 10));
-        
-        return (
-          <div style={{
-            position: 'fixed', left, top, zIndex: 99999,
-            background: '#0f172a', color: '#f1f5f9',
-            borderRadius: 12, padding: '12px 14px',
-            width: popupWidth - 28,
-            maxHeight: 300, overflowY: 'auto',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-            pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.1)',
-          }}>
-            <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 8, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>
-              {tooltip.dateStr} — {tooltip.tasks.length} task{tooltip.tasks.length !== 1 ? 's' : ''}
+        // Compute position from wrapRef (always mounted) + known dropdown geometry
+        const wr = wrapRef.current?.getBoundingClientRect();
+        if (!wr) return null;
+        const pw  = 300;
+        const gap = 12;
+
+        // Dropdown panel: position:absolute right:0 width:320 top:calc(100%+8px) from wrapRef
+        const dropLeft = wr.right - 320;   // left edge of the dropdown panel
+        const dropTop  = wr.bottom + 8;    // top edge of the dropdown panel
+
+        // Try to place tooltip to the LEFT of the dropdown panel
+        let left = dropLeft - pw - gap;
+        // Not enough room on the left → place to the RIGHT of the dropdown panel
+        if (left < 10) left = wr.right + gap;
+        left = Math.max(10, Math.min(left, window.innerWidth - pw - 10));
+
+        // Align tooltip top with dropdown panel top, clamped to keep it on screen
+        const top = Math.min(dropTop, window.innerHeight - 440);
+
+        const tooltipContent = (
+          <div
+            id="cal-tooltip-portal"
+            style={{
+              position: 'fixed', left, top, zIndex: 2147483647,
+              background: '#0f172a', color: '#f1f5f9',
+              borderRadius: 14, padding: '14px 16px',
+              width: pw, maxHeight: 480, overflowY: 'auto',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.55)',
+              border: pinned ? '1px solid #f59e0b' : '1px solid rgba(255,255,255,0.12)',
+              cursor: 'default',
+              pointerEvents: 'auto',
+            }}
+            onMouseEnter={cancelHide}
+            onMouseLeave={scheduleHide}
+          >
+            {/* Header */}
+            <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>📅 {tooltip.dateStr} {pinned && <span style={{ color: '#f59e0b', fontSize: 9 }}>📌 Pinned</span>}</span>
+              <span style={{ background: 'rgba(14,165,233,0.2)', color: '#7dd3fc', borderRadius: 10, padding: '1px 8px' }}>
+                {tooltip.tasks.length} task{tooltip.tasks.length !== 1 ? 's' : ''}
+              </span>
             </div>
+
+            {/* Task rows — each clickable */}
             {tooltip.tasks.map((t, i) => (
-              <div key={i} style={{
-                marginBottom: i < tooltip.tasks.length - 1 ? 8 : 0,
-                paddingBottom: i < tooltip.tasks.length - 1 ? 8 : 0,
-                borderBottom: i < tooltip.tasks.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none',
-              }}>
-                <div style={{ fontWeight: 700, fontSize: 12, color: t.slStatus === 'Completed' ? '#6ee7b7' : '#7dd3fc', marginBottom: 4 }}>
-                  {t.slStatus === 'Completed' ? '✅' : '📋'} {t.description}
+              <div
+                key={i}
+                onClick={() => goToDate(tooltip.dateStr)}
+                style={{
+                  marginBottom: i < tooltip.tasks.length - 1 ? 10 : 0,
+                  paddingBottom: i < tooltip.tasks.length - 1 ? 10 : 0,
+                  borderBottom: i < tooltip.tasks.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none',
+                  cursor: 'pointer', borderRadius: 8, padding: '6px 8px',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => { cancelHide(); e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                {/* Task name */}
+                <div style={{ fontWeight: 700, fontSize: 12, color: t.slStatus === 'Completed' ? '#6ee7b7' : '#7dd3fc', marginBottom: 5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>{t.slStatus === 'Completed' ? '✅' : '📋'}</span>
+                  <span style={{ flex: 1 }}>{t.description}</span>
+                  <span style={{ fontSize: 9, color: '#64748b', fontWeight: 600, flexShrink: 0 }}>→ Open</span>
                 </div>
+                {/* Badges */}
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                   {t.schedTimeFrom && (
                     <span style={{ fontSize: 10, background: 'rgba(14,165,233,0.25)', color: '#7dd3fc', borderRadius: 5, padding: '1px 7px', fontWeight: 600 }}>
@@ -258,8 +341,19 @@ function CalendarDropdown() {
                 </div>
               </div>
             ))}
+
+            {/* Footer hint */}
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: 9, color: '#475569', textAlign: 'center' }}>
+              {pinned
+                ? <>📌 Pinned — click date again to unpin &nbsp;·&nbsp; click task to open schedule</>
+                : <>Click a date to pin · Click a task to open Daily Schedule</>
+              }
+            </div>
           </div>
         );
+
+        // Portal to document.body — fully escapes topbar's CSS stacking context
+        return ReactDOM.createPortal(tooltipContent, document.body);
       })()}
     </div>
   );
@@ -291,6 +385,80 @@ function ISTClock() {
       <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', letterSpacing: 1.5, fontFamily: 'monospace' }}>{time}</span>
       <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.75)', fontWeight: 600, letterSpacing: 1.5, textTransform: 'uppercase' }}>IST</span>
     </div>
+  );
+}
+
+// ─── Plan Days-Remaining Badge ────────────────────────────────────────────────
+function PlanBadge() {
+  const { planInfo, setCurrentPage } = useApp();
+  if (!planInfo?.plan) return null;
+
+  const left  = planInfo.daysLeft ?? 0;
+  const total = planInfo.plan?.TotalDays || 300;
+  const pct   = Math.max(0, Math.min(100, Math.round((left / total) * 100)));
+
+  // Color transitions: green → yellow → orange → red
+  let grad, textColor, glowColor, label;
+  if (left > 100) {
+    grad = 'linear-gradient(135deg,#10b981,#059669)';
+    textColor = '#fff'; glowColor = 'rgba(16,185,129,0.5)'; label = 'Active';
+  } else if (left > 50) {
+    grad = 'linear-gradient(135deg,#f59e0b,#d97706)';
+    textColor = '#fff'; glowColor = 'rgba(245,158,11,0.5)'; label = 'Renew Soon';
+  } else if (left > 20) {
+    grad = 'linear-gradient(135deg,#f97316,#ea580c)';
+    textColor = '#fff'; glowColor = 'rgba(249,115,22,0.5)'; label = 'Urgent';
+  } else {
+    grad = 'linear-gradient(135deg,#ef4444,#dc2626)';
+    textColor = '#fff'; glowColor = 'rgba(239,68,68,0.7)'; label = 'Critical';
+  }
+
+  return (
+    <>
+      <style>{`
+        @keyframes plan-badge-glow {
+          0%,100% { box-shadow: 0 0 8px ${glowColor}; }
+          50%      { box-shadow: 0 0 20px ${glowColor}; }
+        }
+        @keyframes plan-bar-shine {
+          0%   { background-position: -200% center; }
+          100% { background-position: 200% center; }
+        }
+      `}</style>
+      <div
+        onClick={() => setCurrentPage('settings')}
+        title={`Plan: ${planInfo.plan.PlanName} — ${left} days left`}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 7,
+          background: grad, borderRadius: 12, padding: '5px 12px',
+          cursor: 'pointer', animation: 'plan-badge-glow 2s ease-in-out infinite',
+          minWidth: 120,
+        }}
+      >
+        {/* Hourglass icon */}
+        <span style={{ fontSize: 13 }}>{left > 50 ? '⏳' : left > 20 ? '⚠️' : '🚨'}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: textColor, whiteSpace: 'nowrap' }}>
+              {left} days left
+            </span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {label}
+            </span>
+          </div>
+          {/* Progress bar */}
+          <div style={{ width: '100%', height: 3, background: 'rgba(255,255,255,0.25)', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', width: `${pct}%`, borderRadius: 2,
+              background: 'linear-gradient(90deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0.9) 100%)',
+              backgroundSize: '200% auto',
+              animation: 'plan-bar-shine 2s linear infinite',
+              transition: 'width 0.5s ease',
+            }} />
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -394,6 +562,7 @@ export default function Topbar({ onToggleSidebar }) {
         <h3 className="topbar-title">{PAGE_TITLES[currentPage] || currentPage}</h3>
       </div>
       <div className="topbar-right">
+        <PlanBadge />
         <OnlineIndicator user={user} />
         <CalendarDropdown />
         <ISTClock />

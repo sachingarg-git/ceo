@@ -276,6 +276,67 @@ async function initDatabase() {
   `);
   console.log('CompanyUsers table ready.');
 
+  // CompanyPlans table — subscription tracking
+  await p.request().query(`
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='CompanyPlans' AND xtype='U')
+    CREATE TABLE CompanyPlans (
+      ID INT IDENTITY(1,1) PRIMARY KEY,
+      CompanyID INT NOT NULL,
+      PlanName NVARCHAR(100) DEFAULT 'Standard Plan',
+      TotalDays INT DEFAULT 300,
+      StartDate NVARCHAR(20),
+      EndDate NVARCHAR(20),
+      CreatedBy NVARCHAR(50),
+      CreatedAt DATETIME DEFAULT GETDATE(),
+      IsActive BIT DEFAULT 1,
+      Notes NVARCHAR(MAX)
+    )
+  `);
+  console.log('CompanyPlans table ready.');
+
+  // Add Amount column to CompanyPlans if missing
+  try {
+    await p.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CompanyPlans') AND name = 'Amount')
+      ALTER TABLE CompanyPlans ADD Amount DECIMAL(10,2) DEFAULT 0
+    `);
+  } catch (e) { /* ignore */ }
+
+  // PlanProducts table — subscription plan products catalog
+  await p.request().query(`
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='PlanProducts' AND xtype='U')
+    CREATE TABLE PlanProducts (
+      ID INT IDENTITY(1,1) PRIMARY KEY,
+      Name NVARCHAR(100) NOT NULL,
+      DurationDays INT DEFAULT 300,
+      Price DECIMAL(10,2) DEFAULT 0,
+      Features NVARCHAR(MAX),
+      IsPublished BIT DEFAULT 0,
+      SortOrder INT DEFAULT 0,
+      CreatedBy NVARCHAR(50),
+      CreatedAt DATETIME DEFAULT GETDATE()
+    )
+  `);
+  console.log('PlanProducts table ready.');
+
+  // InternalAds table — marquee/ticker ad banners
+  await p.request().query(`
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='InternalAds' AND xtype='U')
+    CREATE TABLE InternalAds (
+      ID INT IDENTITY(1,1) PRIMARY KEY,
+      Content NVARCHAR(MAX) NOT NULL,
+      IsActive BIT DEFAULT 0,
+      BgColor NVARCHAR(30) DEFAULT '#1e293b',
+      TextColor NVARCHAR(30) DEFAULT '#ffffff',
+      Speed INT DEFAULT 40,
+      FontSize INT DEFAULT 13,
+      FontWeight NVARCHAR(20) DEFAULT 'normal',
+      CreatedBy NVARCHAR(50),
+      CreatedAt DATETIME DEFAULT GETDATE()
+    )
+  `);
+  console.log('InternalAds table ready.');
+
   // Add CompanyID column to all data tables for multi-tenancy
   const dataTables = ['QuickCapture', 'RecurringTasks', 'DailySchedule', 'DailyReport', 'WeeklyScorecard', 'InformationSystem', 'Roles', 'Users'];
   for (const tbl of dataTables) {

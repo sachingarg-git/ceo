@@ -1028,7 +1028,8 @@ input, select, textarea { font-family:inherit; }
   box-shadow:2px 0 12px rgba(0,0,0,0.04);
 }
 .sidebar-brand {
-  padding:20px 22px; border-bottom:1px solid #E2E8F0; flex-shrink:0;
+  padding:12px 16px; border-bottom:1px solid #E2E8F0; flex-shrink:0;
+  display:flex; align-items:center; justify-content:flex-start; min-height:64px;
 }
 .sidebar-nav { flex:1; padding:10px 10px; overflow-y:auto; }
 .nav-item {

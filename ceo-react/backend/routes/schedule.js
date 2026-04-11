@@ -56,6 +56,7 @@ router.get('/daily-schedule/:date', async (req, res) => {
           priority: r.Priority || '', batchType: r.BatchType || '',
           baseStatus: r.SLStatus || 'Scheduled', finalStatus,
           schedDate: r.SchedDate || '', schedTime: r.SchedTimeFrom || '',
+          schedTimeTo: r.SchedTimeTo || '',
           timeKey: r.SchedDate + '|' + (r.SchedTimeFrom || ''),
           sendTo: r.SendTo || '', notes: r.Notes || '', isDue: false,
         };
@@ -294,6 +295,7 @@ async function computeSomedayList(companyId) {
     slStatus: r.SLStatus || 'Scheduled',
     schedDate: r.SchedDate || '',
     schedTime: r.SchedTimeFrom || '',
+    schedTimeTo: r.SchedTimeTo || '',
     notes: r.Notes || '',
     sdNum: i + 1,
   }));
@@ -348,6 +350,7 @@ async function computeSomedayList(companyId) {
       schNum: isScheduled ? schNum : null,
       waitNum: isWaiting ? waitNum : null,
       schedDate: qc.schedDate, schedTime: qc.schedTime || '',
+      schedTimeTo: qc.schedTimeTo || '',
       timeKey, frequency: '', nextOccurrence: '',
       isDue: false, notes: qc.notes, nwRank: qc.sdNum,
     });

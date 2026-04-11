@@ -58,7 +58,7 @@ export default function Sidebar({ open, onClose }) {
       <div className={`sidebar${open ? ' open' : ''}`}>
         <div className="sidebar-brand">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <img src="/wizone-logo.png" alt="Wizone" style={{ height: 36 }} />
+            <img src="/wizone-logo.png" alt="Wizone" style={{ width: '100%', maxWidth: 160, height: 'auto', objectFit: 'contain', display: 'block' }} />
           </div>
         </div>
 

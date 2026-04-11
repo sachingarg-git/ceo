@@ -12,6 +12,9 @@ const dashboardRouter = require('./routes/dashboard');
 const mastersRouter = require('./routes/masters');
 const usersRouter = require('./routes/users');
 const companiesRouter = require('./routes/companies');
+const plansRouter = require('./routes/plans');
+const planProductsRouter = require('./routes/planProducts');
+const adsRouter = require('./routes/ads');
 
 const app = express();
 const PORT = process.env.PORT || 4567;
@@ -35,6 +38,9 @@ app.use('/api/dashboard', dashboardRouter);
 app.use('/api/masters', mastersRouter);
 app.use('/api/auth', usersRouter);
 app.use('/api/companies', companiesRouter);
+app.use('/api/plans', plansRouter);
+app.use('/api/plan-products', planProductsRouter);
+app.use('/api/ads', adsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -18,6 +18,8 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [showSignUp, setShowSignUp] = useState(false);
   const [theme, setThemeState] = useState(() => localStorage.getItem('app_theme') || 'light');
+  const [planInfo, setPlanInfo] = useState(null); // { plan, daysLeft, expired }
+  const [activeAd, setActiveAd] = useState(null);
 
   function setTheme(t) {
     setThemeState(t);
@@ -96,8 +98,39 @@ export default function App() {
     }
   }
 
+  // Fetch plan info for company users
+  useEffect(() => {
+    if (!user || user.type !== 'company') { setPlanInfo(null); return; }
+    let cancelled = false;
+    async function fetchPlan() {
+      try {
+        const r = await api.getMyPlan();
+        if (!cancelled && r.success) setPlanInfo(r);
+      } catch {}
+    }
+    fetchPlan();
+    const id = setInterval(fetchPlan, 60000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
+
+  // Fetch active ad for company users
+  useEffect(() => {
+    if (!user || user.type !== 'company') { setActiveAd(null); return; }
+    let cancelled = false;
+    async function fetchAd() {
+      try {
+        const r = await api.getActiveAd();
+        if (!cancelled && r.success) setActiveAd(r.ad || null);
+      } catch {}
+    }
+    fetchAd();
+    const id = setInterval(fetchAd, 60000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
+
   function logout() {
     setUser(null);
+    setPlanInfo(null);
     localStorage.removeItem('ceo_user');
     setCurrentPage('dashboard');
     setShowSignUp(false);
@@ -114,7 +147,7 @@ export default function App() {
     return user.permissions.includes(page);
   }
 
-  const ctx = { user, currentPage, setCurrentPage, showToast, logout, hasPermission, theme, setTheme, toggleTheme };
+  const ctx = { user, currentPage, setCurrentPage, showToast, logout, hasPermission, theme, setTheme, toggleTheme, planInfo, setPlanInfo, activeAd, setActiveAd };
 
   // Show Sign Up page
   if (showSignUp && !user) {
@@ -130,9 +163,59 @@ export default function App() {
     return <Login onLogin={login} loading={loginLoading} onSignUp={() => setShowSignUp(true)} />;
   }
 
+  // Plan expired blocking screen (company users only)
+  const planExpired = user?.type === 'company' && planInfo?.expired === true;
+
   return (
     <AppContext.Provider value={ctx}>
       <Layout />
+      {/* Plan expired overlay — blocks the app but keeps it mounted */}
+      {planExpired && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99999999,
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'Inter, system-ui, sans-serif',
+        }}>
+          <style>{`
+            @keyframes plan-pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.08);opacity:0.8} }
+            @keyframes plan-spin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+            @keyframes plan-glow  { 0%,100%{box-shadow:0 0 20px rgba(239,68,68,0.4)} 50%{box-shadow:0 0 60px rgba(239,68,68,0.8)} }
+          `}</style>
+          {/* Lock icon */}
+          <div style={{ fontSize: 80, marginBottom: 24, animation: 'plan-pulse 2s ease-in-out infinite' }}>🔒</div>
+          <div style={{ fontSize: 32, fontWeight: 900, color: '#fff', marginBottom: 8, letterSpacing: -0.5 }}>
+            Subscription Expired
+          </div>
+          <div style={{ fontSize: 15, color: '#94a3b8', marginBottom: 32, textAlign: 'center', maxWidth: 420, lineHeight: 1.6 }}>
+            Your {planInfo?.plan?.PlanName || 'plan'} has expired.
+            Please contact your administrator to renew your subscription and regain access.
+          </div>
+          <div style={{
+            background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+            borderRadius: 16, padding: '20px 40px', textAlign: 'center',
+            animation: 'plan-glow 2s ease-in-out infinite',
+          }}>
+            <div style={{ fontSize: 12, color: '#fca5a5', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>Plan Ended</div>
+            <div style={{ fontSize: 20, color: '#fff', fontWeight: 800 }}>
+              {planInfo?.plan?.PlanName || 'Standard Plan'} · {planInfo?.plan?.TotalDays || 300} days
+            </div>
+            <div style={{ fontSize: 12, color: '#f87171', marginTop: 4 }}>
+              Expired on {planInfo?.plan?.EndDate || '—'}
+            </div>
+          </div>
+          <button
+            onClick={logout}
+            style={{
+              marginTop: 32, padding: '10px 28px', borderRadius: 12, border: 'none',
+              background: 'rgba(255,255,255,0.1)', color: '#cbd5e1', cursor: 'pointer',
+              fontSize: 13, fontWeight: 600, letterSpacing: 0.5,
+            }}
+          >
+            Sign Out
+          </button>
+        </div>
+      )}
       <div className="toast-container">
         {toasts.map(t => (
           <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>

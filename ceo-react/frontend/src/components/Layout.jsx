@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { useApp } from '../App';
+import MarqueeBanner from './MarqueeBanner';
 
 import Dashboard from '../pages/Dashboard';
 import QuickCapture from '../pages/QuickCapture';
@@ -42,17 +43,19 @@ function AccessDenied() {
 }
 
 export default function Layout() {
-  const { currentPage, hasPermission } = useApp();
+  const { currentPage, hasPermission, activeAd, user } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const allowed = hasPermission(currentPage);
   const PageComponent = allowed ? (PAGES[currentPage] || Dashboard) : AccessDenied;
+  const showAd = user?.type === 'company' && activeAd;
 
   return (
     <div id="appShell" style={{ display: 'block' }}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <Topbar onToggleSidebar={() => setSidebarOpen(v => !v)} />
-      <div className="main-content">
+      {showAd && <MarqueeBanner ad={activeAd} />}
+      <div className="main-content" style={showAd ? { marginTop: 96 } : undefined}>
         <PageComponent />
       </div>
     </div>

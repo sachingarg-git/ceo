@@ -92,4 +92,27 @@ export const api = {
   createCompanyUser: (data) => request('/companies/users/my', { method: 'POST', body: JSON.stringify(data) }),
   updateCompanyUser: (id, data) => request(`/companies/users/my/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCompanyUser: (id) => request(`/companies/users/my/${id}`, { method: 'DELETE' }),
+
+  // Plans / Subscriptions
+  getMyPlan: () => request('/plans/my'),
+  getAllPlans: () => request('/plans'),
+  createPlan: (data) => request('/plans', { method: 'POST', body: JSON.stringify(data) }),
+  updatePlan: (id, data) => request(`/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePlan: (id) => request(`/plans/${id}`, { method: 'DELETE' }),
+
+  // Plan Products (catalog)
+  getPlanProducts: () => request('/plan-products'),
+  createPlanProduct: (data) => request('/plan-products', { method: 'POST', body: JSON.stringify(data) }),
+  updatePlanProduct: (id, data) => request(`/plan-products/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  publishPlanProduct: (id, isPublished) => request(`/plan-products/${id}/publish`, { method: 'PATCH', body: JSON.stringify({ isPublished }) }),
+  deletePlanProduct: (id) => request(`/plan-products/${id}`, { method: 'DELETE' }),
+  activatePlanProduct: (id) => request(`/plan-products/${id}/activate`, { method: 'POST' }),
+
+  // Internal Ads
+  getActiveAd: () => request('/ads/active'),
+  getAllAds: () => request('/ads'),
+  createAd: (data) => request('/ads', { method: 'POST', body: JSON.stringify(data) }),
+  updateAd: (id, data) => request(`/ads/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  activateAd: (id, isActive) => request(`/ads/${id}/activate`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
+  deleteAd: (id) => request(`/ads/${id}`, { method: 'DELETE' }),
 };
