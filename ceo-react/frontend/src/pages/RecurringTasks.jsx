@@ -323,7 +323,7 @@ export default function RecurringTasks() {
                     const fdEnabled = showFixedDate(freq);
 
                     return (
-                      <tr key={row.id} className={row._isDue ? 'ss-row-due' : ''}>
+                      <tr key={row.id}>
                         {/* 0: checkbox */}
                         <td data-row={idx} data-col={0} style={{ textAlign: 'center' }}>
                           <input type="checkbox" className="ss-check" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} />
@@ -331,9 +331,6 @@ export default function RecurringTasks() {
                         {/* 1: # */}
                         <td data-row={idx} data-col={1} className="ss-num">
                           {idx + 1}
-                          {row._isDue && (
-                            <span title="Due today" style={{ color: 'var(--warning, #f59e0b)', marginLeft: 4, cursor: 'help', fontSize: 13 }}>&#9888;</span>
-                          )}
                         </td>
                         {/* 2: Task Name */}
                         <td data-row={idx} data-col={2}>

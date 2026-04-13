@@ -11,6 +11,9 @@ const bot = new TelegramBot(TOKEN);
 // Pending Task State (for interactive /add)
 const pendingTasks = {}; // chatId -> { step, description, timeFrom, timeTo, priority, sendTo, companyId }
 
+// Pending verification choices (multi-company same phone)
+const pendingVerifications = {}; // chatId -> [{ id, name }]
+
 // DB Init
 async function initBotDB() {
   await query(`
@@ -61,7 +64,7 @@ bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   const session = await getSession(chatId);
   if (session) {
-    bot.sendMessage(chatId, `✅ Already verified as *${session.CompanyName}*!\n\nCommands:\n/today - Today's tasks\n/upcoming - Upcoming tasks\n/overdue - Overdue tasks\n/add - Add new task\n/edit - Edit task status\n/done - Mark task done\n/mycompany - Check linked company\n/help - All commands`, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, `✅ Already verified as *${session.CompanyName}*!\n\nCommands:\n/today - Today's tasks\n/upcoming - Upcoming tasks\n/overdue - Overdue tasks\n/add - Add new task\n/edit - Edit task status\n/done - Mark task done\n/mycompany - Check linked company\n/unlink - Disconnect bot\n/help - All commands`, { parse_mode: 'Markdown' });
     return;
   }
   bot.sendMessage(chatId, `👋 Welcome to *EA to M.D Bot*!\n\nPlease share your phone number to verify your company identity.`, {
@@ -80,38 +83,61 @@ bot.on('contact', async (msg) => {
   const phone = msg.contact.phone_number.replace(/\D/g, '');
   const last10 = phone.slice(-10);
 
-  // 1. Check Companies.RegisteredMobile first (primary company owner)
+  // Collect all matching companies from both tables
+  const matchedMap = {}; // companyId -> name (deduplicate)
+
+  // 1. Companies.RegisteredMobile (primary owner — can be multiple companies with same number)
   const companyResult = await query(`
-    SELECT TOP 1 ID, LegalName, RegisteredMobile FROM Companies
+    SELECT ID, LegalName FROM Companies
     WHERE RIGHT(REPLACE(REPLACE(REPLACE(RegisteredMobile, '+', ''), ' ', ''), '-', ''), 10) = @last10
+      AND ApprovalStatus = 'Approved'
   `, { last10 });
-
-  let companyId, companyName;
-
-  if (companyResult.recordset.length) {
-    companyId   = companyResult.recordset[0].ID;
-    companyName = companyResult.recordset[0].LegalName;
-  } else {
-    // 2. Check CompanyUsers.Mobile — allows sub-users to use the bot under their company
-    const userResult = await query(`
-      SELECT TOP 1 cu.CompanyID, c.LegalName
-      FROM CompanyUsers cu
-      INNER JOIN Companies c ON c.ID = cu.CompanyID
-      WHERE RIGHT(REPLACE(REPLACE(REPLACE(cu.Mobile, '+', ''), ' ', ''), '-', ''), 10) = @last10
-        AND cu.IsActive = 1
-    `, { last10 });
-
-    if (!userResult.recordset.length) {
-      bot.sendMessage(chatId, `❌ *Phone number not found.*\n\nPlease register your company at https://ea.wizone.ai or ask your admin to add this number as a sub-user.`, {
-        parse_mode: 'Markdown',
-        reply_markup: { remove_keyboard: true }
-      });
-      return;
-    }
-    companyId   = userResult.recordset[0].CompanyID;
-    companyName = userResult.recordset[0].LegalName;
+  for (const row of companyResult.recordset) {
+    matchedMap[row.ID] = row.LegalName;
   }
 
+  // 2. CompanyUsers.Mobile (sub-users)
+  const userResult = await query(`
+    SELECT cu.CompanyID, c.LegalName
+    FROM CompanyUsers cu
+    INNER JOIN Companies c ON c.ID = cu.CompanyID
+    WHERE RIGHT(REPLACE(REPLACE(REPLACE(cu.Mobile, '+', ''), ' ', ''), '-', ''), 10) = @last10
+      AND cu.IsActive = 1
+  `, { last10 });
+  for (const row of userResult.recordset) {
+    matchedMap[row.CompanyID] = matchedMap[row.CompanyID] || row.LegalName;
+  }
+
+  const matches = Object.entries(matchedMap).map(([id, name]) => ({ id: parseInt(id), name }));
+
+  if (matches.length === 0) {
+    bot.sendMessage(chatId, `❌ *Phone number not found.*\n\nPlease register your company at https://ea.wizone.ai or ask your admin to add this number as a sub-user.`, {
+      parse_mode: 'Markdown',
+      reply_markup: { remove_keyboard: true }
+    });
+    return;
+  }
+
+  // Single match — verify immediately
+  if (matches.length === 1) {
+    await linkSession(chatId, matches[0].id, matches[0].name, phone);
+    return;
+  }
+
+  // Multiple matches — ask user to pick
+  delete pendingVerifications[chatId];
+  pendingVerifications[chatId] = { matches, phone };
+  const buttons = matches.map(m => ([{ text: `🏢 ${m.name}`, callback_data: `verify_company_${m.id}` }]));
+  buttons.push([{ text: '❌ Cancel', callback_data: 'verify_cancel' }]);
+
+  bot.sendMessage(chatId, `📱 *Multiple companies found for this number.*\n\nPlease select which company you want to link:`, {
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: buttons, remove_keyboard: true }
+  });
+});
+
+// Helper: write session and welcome user
+async function linkSession(chatId, companyId, companyName, phone) {
   await query(`
     MERGE TelegramSessions AS target
     USING (SELECT @chatId AS ChatID) AS source ON target.ChatID = source.ChatID
@@ -119,11 +145,11 @@ bot.on('contact', async (msg) => {
     WHEN NOT MATCHED THEN INSERT (ChatID, CompanyID, PhoneNumber, CompanyName) VALUES (@chatId, @companyId, @phone, @name);
   `, { chatId, companyId, phone, name: companyName });
 
-  bot.sendMessage(chatId, `✅ *Verified! Welcome, ${companyName}!*\n\nYour bot is now active. Here's what you can do:\n\n📋 /today - Today's tasks\n📅 /upcoming - Upcoming tasks\n⚠️ /overdue - Overdue tasks\n➕ /add - Add new task\n✏️ /edit - Edit task status\n✅ /done - Mark task done\n🏢 /mycompany - Check linked company\n❓ /help - All commands`, {
+  bot.sendMessage(chatId, `✅ *Verified! Welcome, ${companyName}!*\n\nYour bot is now active. Here's what you can do:\n\n📋 /today - Today's tasks\n📅 /upcoming - Upcoming tasks\n⚠️ /overdue - Overdue tasks\n➕ /add - Add new task\n✏️ /edit - Edit task status\n✅ /done - Mark task done\n🏢 /mycompany - Check linked company\n🔓 /unlink - Disconnect this bot\n❓ /help - All commands`, {
     parse_mode: 'Markdown',
     reply_markup: { remove_keyboard: true }
   });
-});
+}
 
 // Auth Middleware
 async function requireAuth(msg, cb) {
@@ -359,6 +385,37 @@ bot.on('callback_query', async (query_cb) => {
   const data = query_cb.data;
   const chatId = query_cb.message.chat.id;
   const pending = pendingTasks[chatId];
+
+  // Company selection during phone verification (multi-company)
+  if (data.startsWith('verify_company_')) {
+    const selectedId = parseInt(data.replace('verify_company_', ''));
+    const pending = pendingVerifications[chatId];
+    if (!pending) {
+      bot.answerCallbackQuery(query_cb.id, { text: 'Session expired. Please share your number again.' });
+      return;
+    }
+    const match = pending.matches.find(m => m.id === selectedId);
+    if (!match) {
+      bot.answerCallbackQuery(query_cb.id, { text: 'Company not found.' });
+      return;
+    }
+    delete pendingVerifications[chatId];
+    bot.answerCallbackQuery(query_cb.id, { text: `✅ Linked to ${match.name}` });
+    bot.editMessageText(`✅ *${match.name}* selected.`, {
+      chat_id: chatId, message_id: query_cb.message.message_id, parse_mode: 'Markdown'
+    });
+    await linkSession(chatId, match.id, match.name, pending.phone);
+    return;
+  }
+
+  if (data === 'verify_cancel') {
+    delete pendingVerifications[chatId];
+    bot.answerCallbackQuery(query_cb.id, { text: '❌ Cancelled' });
+    bot.editMessageText('❌ Verification cancelled. Send /start to try again.', {
+      chat_id: chatId, message_id: query_cb.message.message_id
+    });
+    return;
+  }
 
   // Cancel task creation
   if (data === 'add_cancel') {
@@ -710,6 +767,18 @@ bot.on('callback_query', async (query_cb) => {
     return;
   }
 
+  // Unlink confirm
+  if (data === 'unlink_confirm') {
+    const session = await getSession(chatId);
+    const companyName = session ? session.CompanyName : 'your company';
+    await query('DELETE FROM TelegramSessions WHERE ChatID = @chatId', { chatId });
+    bot.answerCallbackQuery(query_cb.id, { text: '🔓 Unlinked!' });
+    bot.editMessageText(`🔓 *Bot unlinked from ${companyName}.*\n\nTo re-connect, send /start and share your phone number again.`, {
+      chat_id: chatId, message_id: query_cb.message.message_id, parse_mode: 'Markdown'
+    });
+    return;
+  }
+
   // Mark done callback
   if (data.startsWith('done_')) {
     const id = parseInt(data.replace('done_', ''));
@@ -724,29 +793,52 @@ bot.on('callback_query', async (query_cb) => {
 
 // /help
 bot.onText(/\/help/, (msg) => {
-  bot.sendMessage(msg.chat.id, `🤖 *EA to M.D Bot - Commands:*\n\n/today - Today's tasks\n/upcoming - Upcoming tasks\n/overdue - Overdue tasks\n/add - Create new task (interactive)\n/edit - Edit task (Status/Send To)\n/done - Mark task done\n/mycompany - Check linked company\n/help - Show this menu\n\n_Notifications are sent automatically every morning at 9 AM and evening at 6 PM._`, { parse_mode: 'Markdown' });
+  bot.sendMessage(msg.chat.id, `🤖 *EA to M.D Bot - Commands:*\n\n/today - Today's tasks\n/upcoming - Upcoming tasks\n/overdue - Overdue tasks\n/add - Create new task (interactive)\n/edit - Edit task (Status/Send To)\n/done - Mark task done\n/mycompany - Check linked company\n/unlink - Disconnect bot from company\n/help - Show this menu\n\n_Notifications are sent automatically every morning at 9 AM and evening at 6 PM._`, { parse_mode: 'Markdown' });
 });
 
 // /mycompany - Show linked company info
 bot.onText(/\/mycompany/, async (msg) => {
   const chatId = msg.chat.id;
   const session = await getSession(chatId);
-  
+
   if (!session) {
     bot.sendMessage(chatId, '❌ *Not verified!*\n\nSend /start to verify your identity and link your company.', { parse_mode: 'Markdown' });
     return;
   }
-  
+
   // Get company details
   const r = await query('SELECT ID, LegalName, TradeName, RegisteredMobile, ContactEmail FROM Companies WHERE ID = @cid', { cid: session.CompanyID });
-  
+
   if (!r.recordset.length) {
     bot.sendMessage(chatId, '❌ Company not found in database!', { parse_mode: 'Markdown' });
     return;
   }
-  
+
   const company = r.recordset[0];
-  bot.sendMessage(chatId, `🏢 *Your Linked Company:*\n\n📌 *Name:* ${company.LegalName || company.TradeName}\n🆔 *Company ID:* ${session.CompanyID}\n📱 *Registered Mobile:* ${company.RegisteredMobile || 'N/A'}\n📧 *Email:* ${company.ContactEmail || 'N/A'}\n✅ *Verified Phone:* ${session.PhoneNumber}\n\n_All your tasks are synced with this company._\n\nWrong company? Contact admin or re-verify with /start`, { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, `🏢 *Your Linked Company:*\n\n📌 *Name:* ${company.LegalName || company.TradeName}\n🆔 *Company ID:* ${session.CompanyID}\n📱 *Registered Mobile:* ${company.RegisteredMobile || 'N/A'}\n📧 *Email:* ${company.ContactEmail || 'N/A'}\n✅ *Verified Phone:* ${session.PhoneNumber}\n\n_All your tasks are synced with this company._`, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [[{ text: '🔓 Unlink this bot', callback_data: 'unlink_confirm' }]]
+    }
+  });
+});
+
+// /unlink - Disconnect bot from company
+bot.onText(/\/unlink/, async (msg) => {
+  const chatId = msg.chat.id;
+  const session = await getSession(chatId);
+  if (!session) {
+    bot.sendMessage(chatId, '❌ You are not linked to any company.', { parse_mode: 'Markdown' });
+    return;
+  }
+  bot.sendMessage(chatId, `⚠️ *Unlink confirmation*\n\nThis will disconnect the bot from *${session.CompanyName}*.\n\nYou can re-link anytime by sending /start and sharing your phone number.`, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔓 Yes, Unlink', callback_data: 'unlink_confirm' }, { text: '❌ Cancel', callback_data: 'add_cancel' }]
+      ]
+    }
+  });
 });
 
 // CRON: Morning 9 AM IST
