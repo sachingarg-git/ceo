@@ -316,6 +316,12 @@ export default function Settings() {
   const [editingUser, setEditingUser] = useState(null);
   const [userForm, setUserForm] = useState({ username: '', password: '', fullName: '', email: '', mobile: '', roleId: '' });
 
+  // Reset Password
+  const [resetPwdModal, setResetPwdModal] = useState(false);
+  const [resetPwdUser, setResetPwdUser] = useState(null); // { id, username }
+  const [resetPwdForm, setResetPwdForm] = useState({ newPassword: '', confirmPassword: '' });
+  const [resetPwdSaving, setResetPwdSaving] = useState(false);
+
   // Roles
   const [roleModal, setRoleModal] = useState(false);
   const [editingRole, setEditingRole] = useState(null);
@@ -587,6 +593,33 @@ export default function Settings() {
     } catch { showToast('Error', 'error'); }
   }
 
+  function openResetPwd(u) {
+    setResetPwdUser({ id: u.id, username: u.username });
+    setResetPwdForm({ newPassword: '', confirmPassword: '' });
+    setResetPwdModal(true);
+  }
+
+  async function doResetPassword() {
+    const { newPassword, confirmPassword } = resetPwdForm;
+    if (!newPassword) { showToast('Enter a new password', 'warning'); return; }
+    if (newPassword.length < 6) { showToast('Password must be at least 6 characters', 'warning'); return; }
+    if (newPassword !== confirmPassword) { showToast('Passwords do not match', 'warning'); return; }
+    setResetPwdSaving(true);
+    try {
+      let res;
+      if (isCompany) {
+        res = await api.updateCompanyUser(resetPwdUser.id, { password: newPassword });
+      } else {
+        res = await api.updateUser(resetPwdUser.id, { password: newPassword });
+      }
+      if (res.success) {
+        showToast(`Password reset for ${resetPwdUser.username}`, 'success');
+        setResetPwdModal(false);
+      } else showToast(res.error || 'Failed to reset password', 'error');
+    } catch { showToast('Error resetting password', 'error'); }
+    setResetPwdSaving(false);
+  }
+
   // Roles CRUD
   function openAddRole() {
     setEditingRole(null);
@@ -767,8 +800,9 @@ export default function Settings() {
                     </td>
                     <td style={{ fontSize: 11 }}>{u.lastLogin ? new Date(u.lastLogin).toLocaleDateString() : 'Never'}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                         <button className="btn btn-outline btn-xs" onClick={() => openEditUser(u)}>Edit</button>
+                        <button className="btn btn-outline btn-xs" style={{ color: '#f59e0b', borderColor: '#f59e0b' }} onClick={() => openResetPwd(u)}>🔑 Pwd</button>
                         <button className="btn btn-danger btn-xs" onClick={() => deleteUser(u.id)}>Del</button>
                       </div>
                     </td>
@@ -877,6 +911,62 @@ export default function Settings() {
           <div className="modal-footer">
             <button className="btn btn-outline" onClick={() => setUserModal(false)}>Cancel</button>
             <button className="btn btn-primary" onClick={saveUser}>{editingUser ? 'Update' : 'Create User'}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Reset Password Modal */}
+      <div className={`modal-overlay${resetPwdModal ? ' show' : ''}`} onClick={() => setResetPwdModal(false)}>
+        <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+          <div className="modal-header">
+            <h3>🔑 Reset Password</h3>
+            <button className="modal-close" onClick={() => setResetPwdModal(false)}>&times;</button>
+          </div>
+          <div className="modal-body">
+            {resetPwdUser && (
+              <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 8, background: 'rgba(99,102,241,0.08)', fontSize: 12, color: 'var(--muted)' }}>
+                Resetting password for <strong style={{ color: 'var(--text)' }}>{resetPwdUser.username}</strong>
+              </div>
+            )}
+            <div className="form-group">
+              <label className="form-label">New Password *</label>
+              <input
+                className="form-input"
+                type="password"
+                value={resetPwdForm.newPassword}
+                onChange={e => setResetPwdForm(f => ({ ...f, newPassword: e.target.value }))}
+                placeholder="Minimum 6 characters"
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Confirm Password *</label>
+              <input
+                className="form-input"
+                type="password"
+                value={resetPwdForm.confirmPassword}
+                onChange={e => setResetPwdForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                placeholder="Repeat new password"
+                autoComplete="new-password"
+              />
+              {resetPwdForm.confirmPassword && resetPwdForm.newPassword !== resetPwdForm.confirmPassword && (
+                <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>⚠ Passwords do not match</div>
+              )}
+              {resetPwdForm.confirmPassword && resetPwdForm.newPassword === resetPwdForm.confirmPassword && resetPwdForm.newPassword.length >= 6 && (
+                <div style={{ fontSize: 11, color: '#10b981', marginTop: 4 }}>✓ Passwords match</div>
+              )}
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-outline" onClick={() => setResetPwdModal(false)}>Cancel</button>
+            <button
+              className="btn btn-primary"
+              onClick={doResetPassword}
+              disabled={resetPwdSaving || !resetPwdForm.newPassword || resetPwdForm.newPassword !== resetPwdForm.confirmPassword}
+              style={{ background: '#f59e0b', borderColor: '#f59e0b' }}
+            >
+              {resetPwdSaving ? 'Saving…' : '🔑 Reset Password'}
+            </button>
           </div>
         </div>
       </div>
