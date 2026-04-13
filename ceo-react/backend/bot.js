@@ -30,7 +30,15 @@ async function initBotDB() {
 // Helpers
 async function getSession(chatId) {
   const r = await query('SELECT * FROM TelegramSessions WHERE ChatID = @chatId', { chatId });
-  return r.recordset[0] || null;
+  if (!r.recordset.length) return null;
+  const session = r.recordset[0];
+  // Validate the company still exists — if deleted, kill the stale session
+  const companyCheck = await query('SELECT ID FROM Companies WHERE ID = @id', { id: session.CompanyID });
+  if (!companyCheck.recordset.length) {
+    await query('DELETE FROM TelegramSessions WHERE ChatID = @chatId', { chatId });
+    return null; // force re-verification
+  }
+  return session;
 }
 
 async function getTodayISO() {
@@ -70,31 +78,48 @@ bot.onText(/\/start/, async (msg) => {
 bot.on('contact', async (msg) => {
   const chatId = msg.chat.id;
   const phone = msg.contact.phone_number.replace(/\D/g, '');
-  // Get last 10 digits for matching
   const last10 = phone.slice(-10);
 
-  const result = await query(`
+  // 1. Check Companies.RegisteredMobile first (primary company owner)
+  const companyResult = await query(`
     SELECT TOP 1 ID, LegalName, RegisteredMobile FROM Companies
     WHERE RIGHT(REPLACE(REPLACE(REPLACE(RegisteredMobile, '+', ''), ' ', ''), '-', ''), 10) = @last10
   `, { last10 });
 
-  if (!result.recordset.length) {
-    bot.sendMessage(chatId, `❌ *Phone number not found.*\n\nPlease register your company at https://ea.wizone.ai first.`, {
-      parse_mode: 'Markdown',
-      reply_markup: { remove_keyboard: true }
-    });
-    return;
+  let companyId, companyName;
+
+  if (companyResult.recordset.length) {
+    companyId   = companyResult.recordset[0].ID;
+    companyName = companyResult.recordset[0].LegalName;
+  } else {
+    // 2. Check CompanyUsers.Mobile — allows sub-users to use the bot under their company
+    const userResult = await query(`
+      SELECT TOP 1 cu.CompanyID, c.LegalName
+      FROM CompanyUsers cu
+      INNER JOIN Companies c ON c.ID = cu.CompanyID
+      WHERE RIGHT(REPLACE(REPLACE(REPLACE(cu.Mobile, '+', ''), ' ', ''), '-', ''), 10) = @last10
+        AND cu.IsActive = 1
+    `, { last10 });
+
+    if (!userResult.recordset.length) {
+      bot.sendMessage(chatId, `❌ *Phone number not found.*\n\nPlease register your company at https://ea.wizone.ai or ask your admin to add this number as a sub-user.`, {
+        parse_mode: 'Markdown',
+        reply_markup: { remove_keyboard: true }
+      });
+      return;
+    }
+    companyId   = userResult.recordset[0].CompanyID;
+    companyName = userResult.recordset[0].LegalName;
   }
 
-  const company = result.recordset[0];
   await query(`
     MERGE TelegramSessions AS target
     USING (SELECT @chatId AS ChatID) AS source ON target.ChatID = source.ChatID
     WHEN MATCHED THEN UPDATE SET CompanyID=@companyId, PhoneNumber=@phone, CompanyName=@name, VerifiedAt=GETDATE()
     WHEN NOT MATCHED THEN INSERT (ChatID, CompanyID, PhoneNumber, CompanyName) VALUES (@chatId, @companyId, @phone, @name);
-  `, { chatId, companyId: company.ID, phone, name: company.LegalName });
+  `, { chatId, companyId, phone, name: companyName });
 
-  bot.sendMessage(chatId, `✅ *Verified! Welcome, ${company.LegalName}!*\n\nYour bot is now active. Here's what you can do:\n\n📋 /today - Today's tasks\n📅 /upcoming - Upcoming tasks\n⚠️ /overdue - Overdue tasks\n➕ /add - Add new task\n✏️ /edit - Edit task status\n✅ /done - Mark task done\n🏢 /mycompany - Check linked company\n❓ /help - All commands`, {
+  bot.sendMessage(chatId, `✅ *Verified! Welcome, ${companyName}!*\n\nYour bot is now active. Here's what you can do:\n\n📋 /today - Today's tasks\n📅 /upcoming - Upcoming tasks\n⚠️ /overdue - Overdue tasks\n➕ /add - Add new task\n✏️ /edit - Edit task status\n✅ /done - Mark task done\n🏢 /mycompany - Check linked company\n❓ /help - All commands`, {
     parse_mode: 'Markdown',
     reply_markup: { remove_keyboard: true }
   });

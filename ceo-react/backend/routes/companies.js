@@ -278,12 +278,35 @@ router.put('/:id/reject', async (req, res) => {
   }
 });
 
-// DELETE /api/companies/:id
+// DELETE /api/companies/:id — full cascade wipe for clean re-registration
 router.delete('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+
+    // 1. Kill bot sessions so the user is forced to re-verify and gets the new CompanyID
+    await query('DELETE FROM TelegramSessions WHERE CompanyID = @id', { id });
+
+    // 2. Remove sub-users
+    await query('DELETE FROM CompanyUsers WHERE CompanyID = @id', { id });
+
+    // 3. Remove subscription plans
+    await query('DELETE FROM CompanyPlans WHERE CompanyID = @id', { id });
+
+    // 4. Wipe all task / report data so re-registration starts completely fresh
+    const dataTables = [
+      'QuickCapture', 'DailySchedule', 'RecurringTasks',
+      'DailyReport', 'WeeklyScorecard', 'InformationSystem',
+    ];
+    for (const tbl of dataTables) {
+      try {
+        await query(`DELETE FROM ${tbl} WHERE CompanyID = @id`, { id });
+      } catch (e) { /* table may not have CompanyID yet — ignore */ }
+    }
+
+    // 5. Delete the company record itself
     await query('DELETE FROM Companies WHERE ID = @id', { id });
-    res.json({ success: true, message: 'Company deleted' });
+
+    res.json({ success: true, message: 'Company and all associated data deleted' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -299,8 +322,8 @@ router.get('/users/my', async (req, res) => {
     const result = await query('SELECT * FROM CompanyUsers WHERE CompanyID = @companyId ORDER BY ID ASC', { companyId });
     const users = result.recordset.map(u => ({
       id: u.ID, username: u.Username, fullName: u.FullName || '',
-      email: u.Email || '', role: u.Role || 'User', isActive: u.IsActive,
-      createdAt: u.CreatedAt, lastLogin: u.LastLogin,
+      email: u.Email || '', mobile: u.Mobile || '', role: u.Role || 'User',
+      isActive: u.IsActive, createdAt: u.CreatedAt, lastLogin: u.LastLogin,
     }));
     res.json({ success: true, users, limit: 3, remaining: Math.max(0, 3 - users.length) });
   } catch (err) {
@@ -320,17 +343,23 @@ router.post('/users/my', async (req, res) => {
       return res.json({ success: false, error: 'Maximum 3 users per company. Please delete an existing user first.' });
     }
 
-    const { username, password, fullName, email, role } = req.body;
+    const { username, password, fullName, email, role, mobile } = req.body;
     if (!username || !password) return res.json({ success: false, error: 'Username and password required' });
 
     // Check unique username within company
     const existing = await query('SELECT ID FROM CompanyUsers WHERE CompanyID = @companyId AND Username = @username', { companyId, username });
     if (existing.recordset.length > 0) return res.json({ success: false, error: 'Username already exists in your company' });
 
+    // Check unique mobile across all CompanyUsers (if provided)
+    if (mobile) {
+      const mobileCheck = await query('SELECT ID FROM CompanyUsers WHERE Mobile = @mobile', { mobile });
+      if (mobileCheck.recordset.length > 0) return res.json({ success: false, error: 'Mobile number already linked to another user' });
+    }
+
     const result = await query(
-      `INSERT INTO CompanyUsers (CompanyID, Username, Password, FullName, Email, Role)
-       OUTPUT INSERTED.ID VALUES (@companyId, @username, @password, @fullName, @email, @role)`,
-      { companyId, username, password, fullName: fullName || '', email: email || '', role: role || 'User' }
+      `INSERT INTO CompanyUsers (CompanyID, Username, Password, FullName, Email, Role, Mobile)
+       OUTPUT INSERTED.ID VALUES (@companyId, @username, @password, @fullName, @email, @role, @mobile)`,
+      { companyId, username, password, fullName: fullName || '', email: email || '', role: role || 'User', mobile: mobile || '' }
     );
     res.json({ success: true, id: result.recordset[0].ID, message: 'User created' });
   } catch (err) {
@@ -352,6 +381,7 @@ router.put('/users/my/:id', async (req, res) => {
     if (b.role !== undefined) { sets.push('Role = @role'); params.role = b.role; }
     if (b.isActive !== undefined) { sets.push('IsActive = @isActive'); params.isActive = b.isActive ? 1 : 0; }
     if (b.password) { sets.push('Password = @password'); params.password = b.password; }
+    if (b.mobile !== undefined) { sets.push('Mobile = @mobile'); params.mobile = b.mobile; }
 
     if (sets.length > 0) {
       await query(`UPDATE CompanyUsers SET ${sets.join(', ')} WHERE ID = @id AND CompanyID = @companyId`, params);

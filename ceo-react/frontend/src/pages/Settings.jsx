@@ -314,7 +314,7 @@ export default function Settings() {
   const [roles, setRoles] = useState([]);
   const [userModal, setUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [userForm, setUserForm] = useState({ username: '', password: '', fullName: '', email: '', roleId: '' });
+  const [userForm, setUserForm] = useState({ username: '', password: '', fullName: '', email: '', mobile: '', roleId: '' });
 
   // Roles
   const [roleModal, setRoleModal] = useState(false);
@@ -539,12 +539,12 @@ export default function Settings() {
       return;
     }
     setEditingUser(null);
-    setUserForm({ username: '', password: '', fullName: '', email: '', roleId: roles[0]?.id || '', role: 'User' });
+    setUserForm({ username: '', password: '', fullName: '', email: '', mobile: '', roleId: roles[0]?.id || '', role: 'User' });
     setUserModal(true);
   }
   function openEditUser(u) {
     setEditingUser(u.id);
-    setUserForm({ username: u.username, password: '', fullName: u.fullName, email: u.email || '', roleId: u.roleId || '', role: u.role || 'User' });
+    setUserForm({ username: u.username, password: '', fullName: u.fullName, email: u.email || '', mobile: u.mobile || '', roleId: u.roleId || '', role: u.role || 'User' });
     setUserModal(true);
   }
   async function saveUser() {
@@ -746,18 +746,19 @@ export default function Settings() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>#</th><th>Username</th><th>Full Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last Login</th><th>Actions</th>
+                  <th>#</th><th>Username</th><th>Full Name</th><th>Email</th><th>Mobile</th><th>Role</th><th>Status</th><th>Last Login</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {users.length === 0 ? (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No users found</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No users found</td></tr>
                 ) : users.map((u, i) => (
                   <tr key={u.id}>
                     <td>{i + 1}</td>
                     <td style={{ fontWeight: 600 }}>{u.username}</td>
                     <td>{u.fullName}</td>
                     <td>{u.email || '-'}</td>
+                    <td style={{ fontSize: 11 }}>{u.mobile || '-'}</td>
                     <td><span className="badge badge-active">{u.role || 'N/A'}</span></td>
                     <td>
                       <span className={`badge ${u.isActive ? 'badge-active' : 'badge-stopped'}`} style={{ cursor: 'pointer' }} onClick={() => toggleUserActive(u)}>
@@ -857,6 +858,13 @@ export default function Settings() {
                 <label className="form-label">Email</label>
                 <input className="form-input" type="email" value={userForm.email} onChange={e => setUserForm(f => ({ ...f, email: e.target.value }))} placeholder="Email address" />
               </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                Mobile Number
+                <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400, marginLeft: 6 }}>Used for Telegram bot access</span>
+              </label>
+              <input className="form-input" type="tel" value={userForm.mobile} onChange={e => setUserForm(f => ({ ...f, mobile: e.target.value }))} placeholder="+91 9876543210" />
             </div>
             <div className="form-group">
               <label className="form-label">Role</label>

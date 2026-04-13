@@ -276,6 +276,22 @@ async function initDatabase() {
   `);
   console.log('CompanyUsers table ready.');
 
+  // Add Mobile column to CompanyUsers if missing
+  try {
+    await p.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CompanyUsers') AND name = 'Mobile')
+      ALTER TABLE CompanyUsers ADD Mobile NVARCHAR(20) DEFAULT ''
+    `);
+  } catch (e) { /* ignore */ }
+
+  // Add RoleID column to CompanyUsers if missing (for CEO-assigned roles)
+  try {
+    await p.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CompanyUsers') AND name = 'RoleID')
+      ALTER TABLE CompanyUsers ADD RoleID INT DEFAULT NULL
+    `);
+  } catch (e) { /* ignore */ }
+
   // CompanyPlans table — subscription tracking
   await p.request().query(`
     IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='CompanyPlans' AND xtype='U')
