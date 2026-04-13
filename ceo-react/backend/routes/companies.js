@@ -139,37 +139,69 @@ router.post('/signup', async (req, res) => {
   }
 });
 
-// POST /api/companies/login - Company login
+// POST /api/companies/login - Company login (primary account OR sub-user)
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+
+    // 1. Try primary company account first
     const result = await query(
       'SELECT * FROM Companies WHERE Username = @username AND Password = @password',
       { username, password }
     );
 
-    if (result.recordset.length === 0) {
+    if (result.recordset.length > 0) {
+      const c = result.recordset[0];
+      if (c.ApprovalStatus !== 'Approved') {
+        return res.json({ success: false, error: `Account is ${c.ApprovalStatus}. Please wait for admin approval.` });
+      }
+      await query('UPDATE Companies SET LastLogin = GETDATE() WHERE ID = @id', { id: c.ID });
+      return res.json({
+        success: true,
+        user: {
+          id: c.ID,
+          type: 'company',
+          username: c.Username,
+          name: (c.TradeName && c.TradeName !== 'NA' ? c.TradeName : c.LegalName) || c.Username,
+          gstin: c.GSTIN,
+          role: 'Company',
+          permissions: ['dashboard', 'quick-capture', 'someday-list', 'daily-schedule', 'recurring-tasks', 'info-system', 'daily-report', 'weekly-scorecard', 'next-week-plan', 'performance-analytics', 'settings'],
+        },
+      });
+    }
+
+    // 2. Try CompanyUsers sub-user login
+    const subResult = await query(`
+      SELECT cu.*, c.LegalName, c.TradeName, c.GSTIN, c.ApprovalStatus
+      FROM CompanyUsers cu
+      INNER JOIN Companies c ON c.ID = cu.CompanyID
+      WHERE cu.Username = @username AND cu.Password = @password AND cu.IsActive = 1
+    `, { username, password });
+
+    if (subResult.recordset.length === 0) {
       return res.json({ success: false, error: 'Invalid credentials' });
     }
 
-    const c = result.recordset[0];
-
-    if (c.ApprovalStatus !== 'Approved') {
-      return res.json({ success: false, error: `Account is ${c.ApprovalStatus}. Please wait for admin approval.` });
+    const su = subResult.recordset[0];
+    if (su.ApprovalStatus !== 'Approved') {
+      return res.json({ success: false, error: `Company account is ${su.ApprovalStatus}. Please wait for admin approval.` });
     }
 
-    // Update last login
-    await query('UPDATE Companies SET LastLogin = GETDATE() WHERE ID = @id', { id: c.ID });
+    // Update sub-user last login
+    await query('UPDATE CompanyUsers SET LastLogin = GETDATE() WHERE ID = @id', { id: su.ID });
 
-    res.json({
+    const companyName = (su.TradeName && su.TradeName !== 'NA' ? su.TradeName : su.LegalName) || su.Username;
+    return res.json({
       success: true,
       user: {
-        id: c.ID,
+        id: su.CompanyID,      // Use parent CompanyID so all data scoping works correctly
+        subUserId: su.ID,
         type: 'company',
-        username: c.Username,
-        name: (c.TradeName && c.TradeName !== 'NA' ? c.TradeName : c.LegalName) || c.Username,
-        gstin: c.GSTIN,
-        role: 'Company',
+        username: su.Username,
+        name: `${su.FullName || su.Username} (${companyName})`,
+        gstin: su.GSTIN,
+        role: su.Role || 'User',
+        isSubUser: true,
         permissions: ['dashboard', 'quick-capture', 'someday-list', 'daily-schedule', 'recurring-tasks', 'info-system', 'daily-report', 'weekly-scorecard', 'next-week-plan', 'performance-analytics', 'settings'],
       },
     });
