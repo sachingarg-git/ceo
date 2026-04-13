@@ -2,19 +2,36 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { api } from '../api';
 import { useApp } from '../App';
 
+// Strip company suffix from a name: "sachin (WIZONE AI LABS)" → "sachin"
+function stripCompanySuffix(name) {
+  if (!name) return '';
+  return name.replace(/\s*\(.*\)\s*$/, '').trim();
+}
+
+// Get clean createdBy name for the current user (no company suffix)
+function getCreatedBy(user) {
+  if (!user) return 'Unknown';
+  // Sub-users: store just username (clean, no company suffix)
+  if (user.isSubUser) return user.username || stripCompanySuffix(user.name) || 'Unknown';
+  // Company owner: name is already TradeName or LegalName (no suffix)
+  return stripCompanySuffix(user.name) || user.username || 'Unknown';
+}
+
 // Determine if the current user can see a specific task based on per-user visibility rules
 function canSeeTaskByUser(task, currentUser, companyUsers, taskAccessGrants, isCompanyOwner) {
   if (isCompanyOwner) return true; // owner always sees all
   if (!task.createdBy || task.createdBy === 'Auto (Recurring)') return true; // no creator = public
 
-  // Own tasks always visible
-  const myName = currentUser?.name ? currentUser.name.replace(/\s*\(.*\)\s*$/, '').trim() : '';
-  const myUsername = currentUser?.username || '';
-  if (task.createdBy === myName || task.createdBy === myUsername) return true;
+  // Own tasks always visible — normalize both sides to handle legacy stored names
+  const myName = stripCompanySuffix(currentUser?.name || '').toLowerCase();
+  const myUsername = (currentUser?.username || '').toLowerCase();
+  const storedBy = stripCompanySuffix(task.createdBy).toLowerCase();
+  if (storedBy === myName || storedBy === myUsername) return true;
 
   // Find creator in company users
   const creator = companyUsers.find(u =>
-    u.fullName === task.createdBy || u.username === task.createdBy
+    stripCompanySuffix(u.fullName || '').toLowerCase() === storedBy ||
+    (u.username || '').toLowerCase() === storedBy
   );
   if (!creator) return true; // unknown creator = show
 
@@ -337,16 +354,15 @@ export default function QuickCapture() {
     if (filterDate === 'notscheduled' && !!r.schedDate) return false;
     return true;
   });
-  // viewMode filter
+  // viewMode filter — normalize both sides to handle legacy stored full names
   if (viewMode === 'me') {
-    const myName = user?.name ? user.name.replace(/\s*\(.*\)\s*$/, '').trim() : '';
-    const myUsername = user?.username || '';
-    filtered = filtered.filter(r =>
-      !r.createdBy ||
-      r.createdBy === myName ||
-      r.createdBy === myUsername ||
-      r.createdBy === 'Auto (Recurring)'  // always show auto-synced
-    );
+    const myName = stripCompanySuffix(user?.name || '').toLowerCase();
+    const myUsername = (user?.username || '').toLowerCase();
+    filtered = filtered.filter(r => {
+      if (!r.createdBy || r.createdBy === 'Auto (Recurring)') return true;
+      const storedBy = stripCompanySuffix(r.createdBy).toLowerCase();
+      return storedBy === myName || storedBy === myUsername;
+    });
   }
 
   // Per-user privacy filter (only when viewMode is 'all' and has rights)
@@ -466,7 +482,7 @@ export default function QuickCapture() {
       if (!editingId) {
         payload.date = todayISO();
         payload.time = currentTimeFormatted();
-        payload.createdBy = user?.name || user?.username || 'Unknown';
+        payload.createdBy = getCreatedBy(user);
       }
       const res = editingId ? await api.updateTask(editingId, payload) : await api.addTask(payload);
       if (res.success) { showToast(editingId ? 'Task updated' : 'Task added', 'success'); closeModal(); loadData(); }
@@ -489,7 +505,7 @@ export default function QuickCapture() {
     const nowTime = currentTimeFormatted();
     for (const line of lines) {
       try {
-        const res = await api.addTask({ description: line, priority: 'Medium', sendTo: 'Someday List', slStatus: 'Scheduled', date: now, time: nowTime, createdBy: user?.name || user?.username || 'Unknown' });
+        const res = await api.addTask({ description: line, priority: 'Medium', sendTo: 'Someday List', slStatus: 'Scheduled', date: now, time: nowTime, createdBy: getCreatedBy(user) });
         if (res.success) added++;
       } catch { /* skip */ }
     }

@@ -9,19 +9,34 @@ function autoResize(el) {
 import { api } from '../api';
 import { useApp } from '../App';
 
+// Strip company suffix from a name: "sachin (WIZONE AI LABS)" → "sachin"
+function stripCompanySuffix(name) {
+  if (!name) return '';
+  return name.replace(/\s*\(.*\)\s*$/, '').trim();
+}
+
+// Get clean createdBy name for the current user (no company suffix)
+function getCreatedBy(user) {
+  if (!user) return 'Unknown';
+  if (user.isSubUser) return user.username || stripCompanySuffix(user.name) || 'Unknown';
+  return stripCompanySuffix(user.name) || user.username || 'Unknown';
+}
+
 // Determine if the current user can see a specific task based on per-user visibility rules
 function canSeeTaskByUser(task, currentUser, companyUsers, taskAccessGrants, isCompanyOwner) {
   if (isCompanyOwner) return true; // owner always sees all
-  if (!task.createdBy || task.createdBy === 'Auto (Recurring)') return true; // no creator = public
+  if (!task.createdBy) return true; // no creator = public
 
-  // Own tasks always visible
-  const myName = currentUser?.name ? currentUser.name.replace(/\s*\(.*\)\s*$/, '').trim() : '';
-  const myUsername = currentUser?.username || '';
-  if (task.createdBy === myName || task.createdBy === myUsername) return true;
+  // Own tasks always visible — normalize both sides
+  const myName = stripCompanySuffix(currentUser?.name || '').toLowerCase();
+  const myUsername = (currentUser?.username || '').toLowerCase();
+  const storedBy = stripCompanySuffix(task.createdBy).toLowerCase();
+  if (storedBy === myName || storedBy === myUsername) return true;
 
   // Find creator in company users
   const creator = companyUsers.find(u =>
-    u.fullName === task.createdBy || u.username === task.createdBy
+    stripCompanySuffix(u.fullName || '').toLowerCase() === storedBy ||
+    (u.username || '').toLowerCase() === storedBy
   );
   if (!creator) return true; // unknown creator = show
 
@@ -214,7 +229,7 @@ export default function RecurringTasks() {
       task: '', priority: 'Medium', frequency: 'Daily', weekday: '',
       weekPosition: '', fixedDate: '', timeSlot: '', timeTo: '', batchType: '',
       status: 'Active', slStatus: 'Scheduled', notes: '',
-      createdBy: user?.name || user?.username || 'Unknown',
+      createdBy: getCreatedBy(user),
     });
   }
 
@@ -243,7 +258,7 @@ export default function RecurringTasks() {
   async function saveNewRow() {
     if (!newRow || !newRow.task.trim()) return;
     try {
-      const res = await api.addRecurring({ ...newRow, createdBy: newRow.createdBy || user?.name || user?.username || 'Unknown' });
+      const res = await api.addRecurring({ ...newRow, createdBy: newRow.createdBy || getCreatedBy(user) });
       if (res.success) {
         showToast('Recurring task added', 'success');
         setNewRow(null);
