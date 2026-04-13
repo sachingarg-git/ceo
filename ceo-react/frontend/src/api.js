@@ -47,7 +47,7 @@ export const api = {
   addRecurring: (task) => request('/recurring-tasks', { method: 'POST', body: JSON.stringify(task) }),
   updateRecurring: (id, data) => request(`/recurring-tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteRecurring: (id) => request(`/recurring-tasks/${id}`, { method: 'DELETE' }),
-  syncRecurringTasks: () => request('/recurring-tasks/sync-today', { method: 'POST' }),
+  // syncRecurringTasks removed — recurring tasks no longer auto-inserted into QC
   getTaskVisibility: () => request('/companies/task-visibility'),
   updateTaskVisibility: (setting) => request('/companies/task-visibility', { method: 'PUT', body: JSON.stringify({ setting }) }),
   getTaskAccess: () => request('/companies/task-access'),

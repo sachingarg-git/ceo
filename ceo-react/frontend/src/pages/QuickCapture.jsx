@@ -198,7 +198,7 @@ export default function QuickCapture() {
   async function loadData() {
     setLoading(true);
     try {
-      await api.syncRecurringTasks().catch(() => {}); // sync recurring tasks silently
+      // Note: recurring tasks are shown via conflict indicators only, not synced as rows
       const [captureRes, mastersRes, recurRes] = await Promise.all([
         api.getQuickCapture(), api.getMasters(), api.getRecurringTasks()
       ]);
@@ -676,10 +676,7 @@ export default function QuickCapture() {
 
       {/* ── Split filtered into active vs completed ── */}
       {(() => {
-        const activeRows = [
-          ...filtered.filter(r => r.slStatus !== 'Completed'),
-          ...virtualRecurRows,
-        ];
+        const activeRows = filtered.filter(r => r.slStatus !== 'Completed');
         const completedRows = filtered.filter(r => r.slStatus === 'Completed');
 
         // shared sticky action th style
