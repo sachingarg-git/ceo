@@ -20,6 +20,10 @@ export default function App() {
   const [theme, setThemeState] = useState(() => localStorage.getItem('app_theme') || 'light');
   const [planInfo, setPlanInfo] = useState(null); // { plan, daysLeft, expired }
   const [activeAd, setActiveAd] = useState(null);
+  const [viewMode, setViewModeState] = useState(() => localStorage.getItem('app_view_mode') || 'all');
+  const [taskVisibilitySetting, setTaskVisibilitySetting] = useState('All');
+  const [companyUsers, setCompanyUsers] = useState([]);
+  const [taskAccessGrants, setTaskAccessGrants] = useState([]);
 
   function setTheme(t) {
     setThemeState(t);
@@ -32,6 +36,14 @@ export default function App() {
   }, []);
 
   function toggleTheme() { setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'light' : 'light'); }
+
+  const isCompanyOwner = user?.type === 'company' && !user?.isSubUser;
+  const canViewAll = isCompanyOwner || taskVisibilitySetting === 'All';
+
+  function setViewMode(mode) {
+    setViewModeState(mode);
+    localStorage.setItem('app_view_mode', mode);
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem('ceo_user');
@@ -128,6 +140,21 @@ export default function App() {
     return () => { cancelled = true; clearInterval(id); };
   }, [user]);
 
+  // Fetch task visibility setting for company users
+  useEffect(() => {
+    if (!user || user.type !== 'company') { setTaskVisibilitySetting('All'); return; }
+    api.getTaskVisibility().then(r => {
+      if (r.success) setTaskVisibilitySetting(r.setting || 'All');
+    }).catch(() => {});
+  }, [user]);
+
+  // Fetch company users + access grants (for visibility filtering)
+  useEffect(() => {
+    if (!user || user.type !== 'company') { setCompanyUsers([]); setTaskAccessGrants([]); return; }
+    api.getCompanyUsers().then(r => { if (r.success) setCompanyUsers(r.users || []); }).catch(() => {});
+    api.getTaskAccess().then(r => { if (r.success) setTaskAccessGrants(r.grants || []); }).catch(() => {});
+  }, [user]);
+
   function logout() {
     setUser(null);
     setPlanInfo(null);
@@ -147,7 +174,7 @@ export default function App() {
     return user.permissions.includes(page);
   }
 
-  const ctx = { user, currentPage, setCurrentPage, showToast, logout, hasPermission, theme, setTheme, toggleTheme, planInfo, setPlanInfo, activeAd, setActiveAd };
+  const ctx = { user, currentPage, setCurrentPage, showToast, logout, hasPermission, theme, setTheme, toggleTheme, planInfo, setPlanInfo, activeAd, setActiveAd, viewMode, setViewMode, taskVisibilitySetting, setTaskVisibilitySetting, isCompanyOwner, canViewAll, companyUsers, setCompanyUsers, taskAccessGrants, setTaskAccessGrants };
 
   // Show Sign Up page
   if (showSignUp && !user) {

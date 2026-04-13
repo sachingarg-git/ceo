@@ -1,6 +1,38 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
+
+// Auto-resize a single textarea to fit its content
+function autoResize(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
 import { api } from '../api';
 import { useApp } from '../App';
+
+// Determine if the current user can see a specific task based on per-user visibility rules
+function canSeeTaskByUser(task, currentUser, companyUsers, taskAccessGrants, isCompanyOwner) {
+  if (isCompanyOwner) return true; // owner always sees all
+  if (!task.createdBy || task.createdBy === 'Auto (Recurring)') return true; // no creator = public
+
+  // Own tasks always visible
+  const myName = currentUser?.name ? currentUser.name.replace(/\s*\(.*\)\s*$/, '').trim() : '';
+  const myUsername = currentUser?.username || '';
+  if (task.createdBy === myName || task.createdBy === myUsername) return true;
+
+  // Find creator in company users
+  const creator = companyUsers.find(u =>
+    u.fullName === task.createdBy || u.username === task.createdBy
+  );
+  if (!creator) return true; // unknown creator = show
+
+  // If creator is Private, need explicit grant
+  if (creator.taskPrivacy === 'Private') {
+    const mySubUserId = currentUser?.subUserId;
+    return taskAccessGrants.some(g => g.ownerUserId === creator.id && g.viewerUserId === mySubUserId);
+  }
+
+  return true; // Public
+}
 
 const TIME_SLOTS = [
   '7:00 AM','7:30 AM','8:00 AM','8:30 AM','9:00 AM','9:30 AM',
@@ -23,13 +55,40 @@ const WEEK_POSITIONS = [
 const TASK_STATUSES = ['Active', 'Paused', 'Stopped'];
 const SL_STATUSES = ['Scheduled', 'Waiting', 'Completed', 'Skipped'];
 
-const COL_COUNT = 14;
+const COL_COUNT = 17;
 
 function showWeekday(freq) {
-  return freq === 'Weekly' || freq === 'Monthly';
+  return freq === 'Daily' || freq === 'Weekly' || freq === 'Monthly';
 }
 function showWeekPosition(freq) {
   return freq === 'Weekly' || freq === 'Monthly';
+}
+
+function parseTimeToMin(t) {
+  if (!t) return null;
+  const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return null;
+  let h = parseInt(m[1]), min = parseInt(m[2]);
+  if (m[3].toUpperCase() === 'PM' && h !== 12) h += 12;
+  if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+function calcDuration(from, to) {
+  if (!from || !to) return '';
+  const f = parseTimeToMin(from), t2 = parseTimeToMin(to);
+  if (f === null || t2 === null) return '';
+  if (t2 <= f) return <span style={{ color: '#ef4444', fontSize: 10 }}>⚠ To &lt; From</span>;
+  const diff = t2 - f;
+  const h = Math.floor(diff / 60), m = diff % 60;
+  return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+}
+
+// Returns TIME_SLOTS filtered to only those after the given fromSlot
+function getValidToSlots(fromSlot) {
+  if (!fromSlot) return TIME_SLOTS;
+  const idx = TIME_SLOTS.indexOf(fromSlot);
+  return idx >= 0 ? TIME_SLOTS.slice(idx + 1) : TIME_SLOTS;
 }
 function showFixedDate(freq) {
   return freq === 'Yearly' || freq === 'Fixed Date' || freq === 'Monthly';
@@ -50,7 +109,7 @@ function formatNextOcc(isoStr) {
 }
 
 export default function RecurringTasks() {
-  const { showToast } = useApp();
+  const { showToast, user, viewMode, setViewMode, canViewAll, isCompanyOwner, companyUsers = [], taskAccessGrants = [] } = useApp();
   const [rows, setRows] = useState([]);
   const [masters, setMasters] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +123,12 @@ export default function RecurringTasks() {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const tbodyRef = useRef(null);
+
+  // Resize all task-name textareas after every render (handles initial load + data changes)
+  useLayoutEffect(() => {
+    if (!tbodyRef.current) return;
+    tbodyRef.current.querySelectorAll('textarea.ss-task-cell').forEach(autoResize);
+  });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -87,13 +152,28 @@ export default function RecurringTasks() {
 
   /* ── filtering ── */
   const filtered = useMemo(() => {
-    return rows.filter(r => {
+    let result = rows.filter(r => {
       if (search && !(r.task || r.name || '').toLowerCase().includes(search.toLowerCase())) return false;
       if (filterStatus !== 'All' && (r.status || '').toLowerCase() !== filterStatus.toLowerCase()) return false;
       if (filterFrequency && r.frequency !== filterFrequency) return false;
       return true;
     });
-  }, [rows, search, filterStatus, filterFrequency]);
+    // viewMode filter
+    if (viewMode === 'me') {
+      const myName = user?.name ? user.name.replace(/\s*\(.*\)\s*$/, '').trim() : '';
+      const myUsername = user?.username || '';
+      result = result.filter(r =>
+        !r.createdBy ||
+        r.createdBy === myName ||
+        r.createdBy === myUsername
+      );
+    }
+    // Per-user privacy filter (only when viewMode is 'all' and has rights)
+    if (viewMode === 'all' && canViewAll && !isCompanyOwner) {
+      result = result.filter(r => canSeeTaskByUser(r, user, companyUsers, taskAccessGrants, isCompanyOwner));
+    }
+    return result;
+  }, [rows, search, filterStatus, filterFrequency, viewMode, user, canViewAll, isCompanyOwner, companyUsers, taskAccessGrants]);
 
   /* ── inline cell change (existing rows) ── */
   async function handleCellChange(id, field, value) {
@@ -101,14 +181,20 @@ export default function RecurringTasks() {
 
     // When frequency changes, clear irrelevant fields
     if (field === 'frequency') {
-      if (!showWeekday(value)) {
-        updates.weekday = '';
-      }
-      if (!showWeekPosition(value)) {
-        updates.weekPosition = '';
-      }
-      if (!showFixedDate(value)) {
-        updates.fixedDate = '';
+      if (!showWeekday(value)) updates.weekday = '';
+      if (!showWeekPosition(value)) updates.weekPosition = '';
+      if (!showFixedDate(value)) updates.fixedDate = '';
+    }
+
+    // When Time From changes, clear Time To if it's now before or equal to From
+    if (field === 'timeSlot') {
+      const currentRow = rows.find(r => r.id === id);
+      if (currentRow?.timeTo) {
+        const fromMin = parseTimeToMin(value);
+        const toMin = parseTimeToMin(currentRow.timeTo);
+        if (fromMin !== null && toMin !== null && toMin <= fromMin) {
+          updates.timeTo = '';
+        }
       }
     }
 
@@ -126,8 +212,9 @@ export default function RecurringTasks() {
     if (newRow) return; // already have an unsaved row
     setNewRow({
       task: '', priority: 'Medium', frequency: 'Daily', weekday: '',
-      weekPosition: '', fixedDate: '', timeSlot: '', batchType: '',
-      status: 'Active', slStatus: 'Scheduled', notes: ''
+      weekPosition: '', fixedDate: '', timeSlot: '', timeTo: '', batchType: '',
+      status: 'Active', slStatus: 'Scheduled', notes: '',
+      createdBy: user?.name || user?.username || 'Unknown',
     });
   }
 
@@ -141,6 +228,14 @@ export default function RecurringTasks() {
         if (!showWeekPosition(value)) updated.weekPosition = '';
         if (!showFixedDate(value)) updated.fixedDate = '';
       }
+      // When Time From changes, clear Time To if it becomes invalid
+      if (field === 'timeSlot') {
+        const fromMin = parseTimeToMin(value);
+        const toMin = parseTimeToMin(prev.timeTo);
+        if (fromMin !== null && toMin !== null && toMin <= fromMin) {
+          updated.timeTo = '';
+        }
+      }
       return updated;
     });
   }
@@ -148,7 +243,7 @@ export default function RecurringTasks() {
   async function saveNewRow() {
     if (!newRow || !newRow.task.trim()) return;
     try {
-      const res = await api.addRecurring({ ...newRow });
+      const res = await api.addRecurring({ ...newRow, createdBy: newRow.createdBy || user?.name || user?.username || 'Unknown' });
       if (res.success) {
         showToast('Recurring task added', 'success');
         setNewRow(null);
@@ -251,6 +346,25 @@ export default function RecurringTasks() {
     );
   }
 
+  /* ── no rights overlay ── */
+  if (viewMode === 'all' && !canViewAll) {
+    return (
+      <div>
+        <div className="page-header"><div></div></div>
+        <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>No rights to view all tasks</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 24 }}>
+            Your company admin has restricted access. Switch to "Me Only" to see your tasks.
+          </div>
+          <button className="btn btn-primary" onClick={() => setViewMode('me')}>
+            👤 Switch to Me Only
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -295,17 +409,20 @@ export default function RecurringTasks() {
               <tr>
                 <th style={{ width: 28 }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>
                 <th style={{ width: 28 }}>#</th>
-                <th style={{ minWidth: 180 }}>Task Name</th>
+                <th style={{ minWidth: 240 }}>Task Name</th>
                 <th style={{ width: 80 }}>Priority</th>
                 <th style={{ width: 100 }}>Frequency</th>
                 <th style={{ width: 95 }}>Day</th>
                 <th style={{ width: 85 }}>Wk Pos</th>
                 <th style={{ width: 100 }}>Fixed Date</th>
-                <th style={{ width: 100 }}>Time</th>
+                <th style={{ width: 95 }}>Time From</th>
+                <th style={{ width: 95 }}>Time To</th>
+                <th style={{ width: 75 }}>Duration</th>
                 <th style={{ width: 95 }}>Batch</th>
                 <th style={{ width: 80 }}>Status</th>
                 <th style={{ width: 95 }}>Next Occ.</th>
                 <th style={{ width: 90 }}>SL Status</th>
+                <th style={{ width: 100 }}>Created By</th>
                 <th style={{ width: 40 }}>Actions</th>
               </tr>
             </thead>
@@ -333,8 +450,10 @@ export default function RecurringTasks() {
                           {idx + 1}
                         </td>
                         {/* 2: Task Name */}
-                        <td data-row={idx} data-col={2}>
-                          <input className="ss-cell" defaultValue={row.task || row.name || ''}
+                        <td data-row={idx} data-col={2} className="ss-task-td">
+                          <textarea className="ss-task-cell" defaultValue={row.task || row.name || ''}
+                            rows={1}
+                            onInput={e => autoResize(e.target)}
                             onBlur={e => { if (e.target.value !== (row.task || row.name || '')) handleCellChange(row.id, 'task', e.target.value); }} />
                         </td>
                         {/* 3: Priority */}
@@ -372,15 +491,27 @@ export default function RecurringTasks() {
                             disabled={!fdEnabled}
                             style={{ opacity: fdEnabled ? 1 : 0.3, cursor: fdEnabled ? 'pointer' : 'not-allowed', borderColor: fdEnabled && row.fixedDate ? 'var(--primary)' : 'transparent' }} />
                         </td>
-                        {/* 8: Time */}
+                        {/* 8: Time From */}
                         <td data-row={idx} data-col={8}>
                           <select className="ss-cell" value={row.timeSlot || ''} onChange={e => handleCellChange(row.id, 'timeSlot', e.target.value)}>
                             <option value="">--</option>
                             {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
                           </select>
                         </td>
-                        {/* 9: Batch */}
+                        {/* 9: Time To */}
                         <td data-row={idx} data-col={9}>
+                          <select className="ss-cell" value={row.timeTo || ''}
+                            onChange={e => handleCellChange(row.id, 'timeTo', e.target.value)}>
+                            <option value="">--</option>
+                            {getValidToSlots(row.timeSlot).map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </td>
+                        {/* 10: Duration */}
+                        <td data-row={idx} data-col={10} style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, padding: '0 8px', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                          {calcDuration(row.timeSlot, row.timeTo)}
+                        </td>
+                        {/* 11: Batch */}
+                        <td data-row={idx} data-col={11}>
                           {Array.isArray(batchTypeOptions) && batchTypeOptions.length > 0 ? (
                             <select className="ss-cell" value={row.batchType || ''} onChange={e => handleCellChange(row.id, 'batchType', e.target.value)}>
                               <option value="">--</option>
@@ -391,26 +522,30 @@ export default function RecurringTasks() {
                               onBlur={e => { if (e.target.value !== (row.batchType || '')) handleCellChange(row.id, 'batchType', e.target.value); }} />
                           )}
                         </td>
-                        {/* 10: Status */}
-                        <td data-row={idx} data-col={10}>
+                        {/* 12: Status */}
+                        <td data-row={idx} data-col={12}>
                           <select className="ss-cell" value={row.status || ''} onChange={e => handleCellChange(row.id, 'status', e.target.value)}>
                             <option value="">--</option>
                             {TASK_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </td>
-                        {/* 11: Next Occurrence (read-only) */}
-                        <td data-row={idx} data-col={11} style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                        {/* 13: Next Occurrence (read-only) */}
+                        <td data-row={idx} data-col={13} style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                           {formatNextOcc(row._nextOccurrenceISO) || row._nextOccurrence || '-'}
                         </td>
-                        {/* 12: SL Status */}
-                        <td data-row={idx} data-col={12}>
+                        {/* 14: SL Status */}
+                        <td data-row={idx} data-col={14}>
                           <select className="ss-cell" value={row.slStatus || ''} onChange={e => handleCellChange(row.id, 'slStatus', e.target.value)}>
                             <option value="">--</option>
                             {SL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </td>
-                        {/* 13: Actions (delete) */}
-                        <td data-row={idx} data-col={13} style={{ textAlign: 'center' }}>
+                        {/* 15: Created By (read-only) */}
+                        <td data-row={idx} data-col={15} style={{ fontSize: 11, color: 'var(--muted)', padding: '0 8px', whiteSpace: 'nowrap' }}>
+                          {row.createdBy || '-'}
+                        </td>
+                        {/* 16: Actions (delete) */}
+                        <td data-row={idx} data-col={16} style={{ textAlign: 'center' }}>
                           <button className="ss-del" title="Delete" onClick={() => setDeleteConfirmId(row.id)}>&times;</button>
                         </td>
                       </tr>
@@ -425,9 +560,11 @@ export default function RecurringTasks() {
                       {/* # */}
                       <td className="ss-num">{filtered.length + 1}</td>
                       {/* Task Name */}
-                      <td>
-                        <input className="ss-cell" autoFocus placeholder="Enter task name..."
+                      <td className="ss-task-td">
+                        <textarea className="ss-task-cell" autoFocus placeholder="Enter task name..."
+                          rows={1}
                           value={newRow.task} onChange={e => updateNewRowField('task', e.target.value)}
+                          onInput={e => autoResize(e.target)}
                           onBlur={handleNewRowTaskBlur}
                           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveNewRow(); } }} />
                       </td>
@@ -464,12 +601,23 @@ export default function RecurringTasks() {
                           disabled={!showFixedDate(newRow.frequency)}
                           style={{ opacity: showFixedDate(newRow.frequency) ? 1 : 0.3, cursor: showFixedDate(newRow.frequency) ? 'pointer' : 'not-allowed' }} />
                       </td>
-                      {/* Time */}
+                      {/* Time From */}
                       <td>
                         <select className="ss-cell" value={newRow.timeSlot} onChange={e => updateNewRowField('timeSlot', e.target.value)}>
                           <option value="">--</option>
                           {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
+                      </td>
+                      {/* Time To */}
+                      <td>
+                        <select className="ss-cell" value={newRow.timeTo || ''} onChange={e => updateNewRowField('timeTo', e.target.value)}>
+                          <option value="">--</option>
+                          {getValidToSlots(newRow.timeSlot).map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </td>
+                      {/* Duration */}
+                      <td style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, padding: '0 8px', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                        {calcDuration(newRow.timeSlot, newRow.timeTo)}
                       </td>
                       {/* Batch */}
                       <td>
@@ -495,6 +643,10 @@ export default function RecurringTasks() {
                         <select className="ss-cell" value={newRow.slStatus} onChange={e => updateNewRowField('slStatus', e.target.value)}>
                           {SL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
+                      </td>
+                      {/* Created By (read-only, pre-filled) */}
+                      <td style={{ fontSize: 11, color: 'var(--muted)', padding: '0 8px', whiteSpace: 'nowrap' }}>
+                        {newRow.createdBy || '-'}
                       </td>
                       {/* Actions: cancel new row */}
                       <td style={{ textAlign: 'center' }}>

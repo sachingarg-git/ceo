@@ -371,6 +371,61 @@ async function initDatabase() {
   }
   console.log('CompanyID columns ready.');
 
+  // Add TimeTo column to RecurringTasks
+  try {
+    await p.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('RecurringTasks') AND name = 'TimeTo')
+      ALTER TABLE RecurringTasks ADD TimeTo NVARCHAR(20) DEFAULT ''
+    `);
+  } catch (e) { /* ignore */ }
+
+  // Add CreatedBy column to RecurringTasks
+  try {
+    await p.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('RecurringTasks') AND name = 'CreatedBy')
+      ALTER TABLE RecurringTasks ADD CreatedBy NVARCHAR(100) DEFAULT ''
+    `);
+  } catch (e) { /* ignore */ }
+
+  // Add CreatedBy column to QuickCapture
+  try {
+    await p.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QuickCapture') AND name = 'CreatedBy')
+      ALTER TABLE QuickCapture ADD CreatedBy NVARCHAR(100) DEFAULT ''
+    `);
+  } catch (e) { /* ignore */ }
+  console.log('TimeTo and CreatedBy columns ready.');
+
+  // Add TaskVisibilitySetting to Companies
+  try {
+    await p.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'TaskVisibilitySetting')
+      ALTER TABLE Companies ADD TaskVisibilitySetting NVARCHAR(20) DEFAULT 'All'
+    `);
+  } catch (e) { /* ignore */ }
+  console.log('TaskVisibilitySetting column ready.');
+
+  // Add TaskPrivacy column to CompanyUsers
+  try {
+    await p.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CompanyUsers') AND name = 'TaskPrivacy')
+      ALTER TABLE CompanyUsers ADD TaskPrivacy NVARCHAR(20) DEFAULT 'Public'
+    `);
+  } catch (e) { /* ignore */ }
+
+  // Create UserTaskAccess table (per-user task access grants)
+  await p.request().query(`
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='UserTaskAccess' AND xtype='U')
+    CREATE TABLE UserTaskAccess (
+      ID INT IDENTITY(1,1) PRIMARY KEY,
+      CompanyID INT NOT NULL,
+      ViewerUserID INT NOT NULL,
+      OwnerUserID INT NOT NULL,
+      CreatedAt DATETIME DEFAULT GETDATE()
+    )
+  `);
+  console.log('UserTaskAccess table ready.');
+
   // Seed Masters data if empty
   const mastersCheck = await p.request().query('SELECT COUNT(*) as cnt FROM Masters');
   if (mastersCheck.recordset[0].cnt === 0) {

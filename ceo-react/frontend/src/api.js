@@ -9,10 +9,19 @@ function getCompanyId() {
   } catch { return '0'; }
 }
 
+function getSubUserId() {
+  try {
+    const user = JSON.parse(localStorage.getItem('ceo_user') || '{}');
+    return user.isSubUser && user.subUserId ? String(user.subUserId) : '';
+  } catch { return ''; }
+}
+
 async function request(url, options = {}) {
+  const subId = getSubUserId();
   const headers = {
     'Content-Type': 'application/json',
     'x-company-id': getCompanyId(),
+    ...(subId ? { 'x-sub-user-id': subId } : {}),
     ...(options.headers || {}),
   };
   const res = await fetch(API_BASE + url, { ...options, headers });
@@ -38,6 +47,13 @@ export const api = {
   addRecurring: (task) => request('/recurring-tasks', { method: 'POST', body: JSON.stringify(task) }),
   updateRecurring: (id, data) => request(`/recurring-tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteRecurring: (id) => request(`/recurring-tasks/${id}`, { method: 'DELETE' }),
+  syncRecurringTasks: () => request('/recurring-tasks/sync-today', { method: 'POST' }),
+  getTaskVisibility: () => request('/companies/task-visibility'),
+  updateTaskVisibility: (setting) => request('/companies/task-visibility', { method: 'PUT', body: JSON.stringify({ setting }) }),
+  getTaskAccess: () => request('/companies/task-access'),
+  grantTaskAccess: (viewerUserId, ownerUserId) => request('/companies/task-access', { method: 'POST', body: JSON.stringify({ viewerUserId, ownerUserId }) }),
+  revokeTaskAccess: (id) => request(`/companies/task-access/${id}`, { method: 'DELETE' }),
+  updateUserPrivacy: (userId, privacy) => request(`/companies/users/my/${userId}/privacy`, { method: 'PUT', body: JSON.stringify({ privacy }) }),
 
   // Daily Schedule
   getDailySchedule: (date) => request(`/daily-schedule/${date}`),

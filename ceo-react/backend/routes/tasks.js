@@ -23,6 +23,7 @@ router.get('/', async (req, res) => {
       deadline: r.Deadline || '',
       status: r.Status || 'Not Started',
       doneDate: r.DoneDate || '',
+      createdBy: r.CreatedBy || '',
     }));
 
     // Compute SD# and IS#
@@ -47,9 +48,9 @@ router.post('/', async (req, res) => {
     const timeStr = b.time || formatTimeNow(now);
 
     const result = await query(
-      `INSERT INTO QuickCapture (Date, Time, Task, Priority, BatchType, SendTo, SLStatus, SchedDate, SchedTimeFrom, SchedTimeTo, Deadline, Notes, Status, CompanyID)
+      `INSERT INTO QuickCapture (Date, Time, Task, Priority, BatchType, SendTo, SLStatus, SchedDate, SchedTimeFrom, SchedTimeTo, Deadline, Notes, Status, CompanyID, CreatedBy)
        OUTPUT INSERTED.ID
-       VALUES (@date, @time, @task, @priority, @batchType, @sendTo, @slStatus, @schedDate, @schedTimeFrom, @schedTimeTo, @deadline, @notes, @status, @companyId)`,
+       VALUES (@date, @time, @task, @priority, @batchType, @sendTo, @slStatus, @schedDate, @schedTimeFrom, @schedTimeTo, @deadline, @notes, @status, @companyId, @createdBy)`,
       {
         date: dateStr,
         time: timeStr,
@@ -65,6 +66,7 @@ router.post('/', async (req, res) => {
         notes: b.notes || '',
         status: b.status || 'Not Started',
         companyId: req.companyId,
+        createdBy: b.createdBy || '',
       }
     );
 
@@ -87,7 +89,7 @@ router.put('/:id', async (req, res) => {
       Date: 'date', Time: 'time', Task: 'task', Priority: 'priority',
       BatchType: 'batchType', SendTo: 'sendTo', SLStatus: 'slStatus',
       SchedDate: 'schedDate', SchedTimeFrom: 'schedTimeFrom', SchedTimeTo: 'schedTimeTo',
-      Deadline: 'deadline', Notes: 'notes', Status: 'status', DoneDate: 'doneDate',
+      Deadline: 'deadline', Notes: 'notes', Status: 'status', DoneDate: 'doneDate', CreatedBy: 'createdBy',
     };
 
     // Also accept 'description' as 'task'

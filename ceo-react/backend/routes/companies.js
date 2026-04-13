@@ -356,6 +356,7 @@ router.get('/users/my', async (req, res) => {
       id: u.ID, username: u.Username, fullName: u.FullName || '',
       email: u.Email || '', mobile: u.Mobile || '', role: u.Role || 'User',
       isActive: u.IsActive, createdAt: u.CreatedAt, lastLogin: u.LastLogin,
+      taskPrivacy: u.TaskPrivacy || 'Public',
     }));
     res.json({ success: true, users, limit: 3, remaining: Math.max(0, 3 - users.length) });
   } catch (err) {
@@ -434,6 +435,98 @@ router.delete('/users/my/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// GET task visibility setting for this company
+router.get('/task-visibility', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    if (!companyId) return res.json({ success: false, error: 'Not a company user' });
+    const r = await query('SELECT TaskVisibilitySetting FROM Companies WHERE ID = @id', { id: companyId });
+    const setting = r.recordset[0]?.TaskVisibilitySetting || 'All';
+    res.json({ success: true, setting });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT task visibility setting — sub-users (x-sub-user-id header present) are blocked
+router.put('/task-visibility', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    if (!companyId) return res.json({ success: false, error: 'Not a company user' });
+    // Block sub-users
+    if (req.headers['x-sub-user-id']) {
+      return res.status(403).json({ success: false, error: 'Only the company owner can change this setting' });
+    }
+    const { setting } = req.body;
+    if (!['All', 'Restricted'].includes(setting)) {
+      return res.status(400).json({ success: false, error: 'Invalid setting value' });
+    }
+    await query('UPDATE Companies SET TaskVisibilitySetting = @setting WHERE ID = @id', { setting, id: companyId });
+    res.json({ success: true, message: 'Task visibility updated' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET task access grants for this company
+router.get('/task-access', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    if (!companyId) return res.json({ success: false, error: 'Not a company user' });
+    const r = await query(
+      'SELECT * FROM UserTaskAccess WHERE CompanyID = @companyId ORDER BY ID ASC',
+      { companyId }
+    );
+    res.json({ success: true, grants: r.recordset.map(g => ({ id: g.ID, viewerUserId: g.ViewerUserID, ownerUserId: g.OwnerUserID })) });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// POST create a task access grant (owner only)
+router.post('/task-access', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    if (!companyId) return res.json({ success: false, error: 'Not a company user' });
+    if (req.headers['x-sub-user-id']) return res.status(403).json({ success: false, error: 'Only company owner can manage access grants' });
+    const { viewerUserId, ownerUserId } = req.body;
+    if (!viewerUserId || !ownerUserId) return res.status(400).json({ success: false, error: 'viewerUserId and ownerUserId required' });
+    // Prevent duplicate
+    const existing = await query(
+      'SELECT ID FROM UserTaskAccess WHERE CompanyID=@cid AND ViewerUserID=@vid AND OwnerUserID=@oid',
+      { cid: companyId, vid: viewerUserId, oid: ownerUserId }
+    );
+    if (existing.recordset.length) return res.json({ success: true, message: 'Grant already exists' });
+    const result = await query(
+      'INSERT INTO UserTaskAccess (CompanyID, ViewerUserID, OwnerUserID) OUTPUT INSERTED.ID VALUES (@cid, @vid, @oid)',
+      { cid: companyId, vid: viewerUserId, oid: ownerUserId }
+    );
+    res.json({ success: true, id: result.recordset[0].ID, message: 'Access granted' });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// DELETE revoke a task access grant (owner only)
+router.delete('/task-access/:id', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    if (req.headers['x-sub-user-id']) return res.status(403).json({ success: false, error: 'Only company owner can manage access grants' });
+    const id = parseInt(req.params.id);
+    await query('DELETE FROM UserTaskAccess WHERE ID=@id AND CompanyID=@cid', { id, cid: companyId });
+    res.json({ success: true, message: 'Access revoked' });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// PUT update a user's task privacy (owner only)
+router.put('/users/my/:id/privacy', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    if (req.headers['x-sub-user-id']) return res.status(403).json({ success: false, error: 'Only company owner can change privacy settings' });
+    const id = parseInt(req.params.id);
+    const { privacy } = req.body; // 'Public' | 'Private'
+    if (!['Public', 'Private'].includes(privacy)) return res.status(400).json({ success: false, error: 'Invalid privacy value' });
+    await query('UPDATE CompanyUsers SET TaskPrivacy=@privacy WHERE ID=@id AND CompanyID=@cid', { privacy, id, cid: companyId });
+    res.json({ success: true, message: 'Privacy updated' });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 module.exports = router;

@@ -296,10 +296,12 @@ function AvailablePlans({ onActivate }) {
 }
 
 export default function Settings() {
-  const { showToast, hasPermission, user: currentUser, theme, setTheme, planInfo, setPlanInfo } = useApp();
+  const { showToast, hasPermission, user: currentUser, theme, setTheme, planInfo, setPlanInfo, taskVisibilitySetting, setTaskVisibilitySetting, taskAccessGrants, setTaskAccessGrants, companyUsers } = useApp();
   const isCompany = currentUser?.type === 'company';
   // CEO admin = any internal (non-company) user with CEO role, or explicitly flagged isAdmin
   const isCeoAdmin = currentUser?.type === 'ceo' && (currentUser?.isAdmin || currentUser?.role === 'CEO');
+  const isCompanyOwner = currentUser?.type === 'company' && !currentUser?.isSubUser;
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
   const [activeTab, setActiveTab] = useState('themes');
   const [masters, setMasters] = useState({});
   const [loading, setLoading] = useState(true);
@@ -321,6 +323,45 @@ export default function Settings() {
   const [resetPwdUser, setResetPwdUser] = useState(null); // { id, username }
   const [resetPwdForm, setResetPwdForm] = useState({ newPassword: '', confirmPassword: '' });
   const [resetPwdSaving, setResetPwdSaving] = useState(false);
+
+  // Access Management Modal
+  const [accessModal, setAccessModal] = useState(null); // { user }
+
+  async function handleTogglePrivacy(u) {
+    const newPrivacy = u.taskPrivacy === 'Private' ? 'Public' : 'Private';
+    try {
+      const r = await api.updateUserPrivacy(u.id, newPrivacy);
+      if (r.success) {
+        setUsers(prev => prev.map(usr => usr.id === u.id ? { ...usr, taskPrivacy: newPrivacy } : usr));
+        showToast(`${u.fullName || u.username}'s tasks set to ${newPrivacy}`, 'success');
+      }
+    } catch { showToast('Error updating privacy', 'error'); }
+  }
+
+  function openAccessModal(u) {
+    setAccessModal({ user: u });
+  }
+
+  async function handleGrantAccess(viewerUserId, ownerUserId) {
+    try {
+      const r = await api.grantTaskAccess(viewerUserId, ownerUserId);
+      if (r.success) {
+        const updatedGrants = await api.getTaskAccess();
+        if (updatedGrants.success) setTaskAccessGrants(updatedGrants.grants || []);
+        showToast('Access granted', 'success');
+      }
+    } catch { showToast('Error granting access', 'error'); }
+  }
+
+  async function handleRevokeAccess(grantId) {
+    try {
+      const r = await api.revokeTaskAccess(grantId);
+      if (r.success) {
+        setTaskAccessGrants(prev => prev.filter(g => g.id !== grantId));
+        showToast('Access revoked', 'success');
+      }
+    } catch { showToast('Error revoking access', 'error'); }
+  }
 
   // Roles
   const [roleModal, setRoleModal] = useState(false);
@@ -351,6 +392,22 @@ export default function Settings() {
   const [planLoading, setPlanLoading] = useState(false);
 
   useEffect(() => { loadAll(); }, []);
+
+  async function saveVisibilitySetting(newSetting) {
+    setVisibilitySaving(true);
+    try {
+      const r = await api.updateTaskVisibility(newSetting);
+      if (r.success) {
+        setTaskVisibilitySetting(newSetting);
+        showToast('Task visibility setting saved', 'success');
+      } else {
+        showToast(r.error || 'Failed to save', 'error');
+      }
+    } catch {
+      showToast('Error saving setting', 'error');
+    }
+    setVisibilitySaving(false);
+  }
 
   async function loadAll() {
     setLoading(true);
@@ -763,6 +820,50 @@ export default function Settings() {
       {/* Users Management */}
       {activeTab === 'users' && (
         <div>
+          {isCompany && (
+            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px 24px', marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)', marginBottom: 4 }}>🔒 Task Visibility</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    Control whether internal users can see all company tasks or only their own.
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                {[
+                  { value: 'All', icon: '📋', label: 'All Tasks Visible', desc: 'All users can see all tasks' },
+                  { value: 'Restricted', icon: '🔐', label: 'Restricted', desc: 'Sub-users see only their own tasks' },
+                ].map(opt => {
+                  const active = taskVisibilitySetting === opt.value;
+                  const canChange = isCompanyOwner && !visibilitySaving;
+                  return (
+                    <div key={opt.value}
+                      onClick={() => { if (canChange && !active) saveVisibilitySetting(opt.value); }}
+                      style={{
+                        flex: 1, border: `2px solid ${active ? 'var(--primary)' : 'var(--border)'}`,
+                        borderRadius: 12, padding: '14px 16px',
+                        background: active ? 'rgba(13,110,110,0.06)' : 'var(--bg)',
+                        cursor: canChange && !active ? 'pointer' : 'default',
+                        opacity: !isCompanyOwner ? 0.65 : 1,
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <div style={{ fontSize: 20, marginBottom: 6 }}>{opt.icon}</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: active ? 'var(--primary)' : 'var(--text)', marginBottom: 2 }}>{opt.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{opt.desc}</div>
+                      {active && <div style={{ marginTop: 8, fontSize: 10, color: 'var(--primary)', fontWeight: 700 }}>✓ Active</div>}
+                    </div>
+                  );
+                })}
+              </div>
+              {!isCompanyOwner && (
+                <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
+                  ⚠ Only the company owner can change this setting.
+                </div>
+              )}
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div>
               <h3 style={{ fontSize: 14, fontWeight: 700 }}>User Management</h3>
@@ -804,6 +905,26 @@ export default function Settings() {
                         <button className="btn btn-outline btn-xs" onClick={() => openEditUser(u)}>Edit</button>
                         <button className="btn btn-outline btn-xs" style={{ color: '#f59e0b', borderColor: '#f59e0b' }} onClick={() => openResetPwd(u)}>🔑 Pwd</button>
                         <button className="btn btn-danger btn-xs" onClick={() => deleteUser(u.id)}>Del</button>
+                        {isCompanyOwner && (
+                          <>
+                            <button
+                              className="btn btn-sm"
+                              style={{ fontSize: 10, padding: '3px 8px', background: u.taskPrivacy === 'Private' ? '#ef444420' : '#10b98120', border: `1px solid ${u.taskPrivacy === 'Private' ? '#ef4444' : '#10b981'}`, color: u.taskPrivacy === 'Private' ? '#ef4444' : '#10b981', borderRadius: 6 }}
+                              onClick={() => handleTogglePrivacy(u)}
+                              title={u.taskPrivacy === 'Private' ? 'Tasks: Private (click to make Public)' : 'Tasks: Public (click to make Private)'}
+                            >
+                              {u.taskPrivacy === 'Private' ? '🔒 Private' : '🌐 Public'}
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              style={{ fontSize: 10, padding: '3px 8px' }}
+                              onClick={() => openAccessModal(u)}
+                              title="Manage who can see this user's tasks"
+                            >
+                              👁 Access
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -970,6 +1091,52 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {/* Access Management Modal */}
+      {accessModal && (
+        <div className="modal-overlay show" onClick={e => { if (e.target === e.currentTarget) setAccessModal(null); }}>
+          <div className="modal" style={{ maxWidth: 500 }}>
+            <div className="modal-header">
+              <h3>👁 Task Access — {accessModal.user.fullName || accessModal.user.username}</h3>
+              <button className="modal-close" onClick={() => setAccessModal(null)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+                Control which users can see tasks created by <strong>{accessModal.user.fullName || accessModal.user.username}</strong>.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {users.filter(u => u.id !== accessModal.user.id).map(viewer => {
+                  const grant = taskAccessGrants.find(g => g.ownerUserId === accessModal.user.id && g.viewerUserId === viewer.id);
+                  return (
+                    <div key={viewer.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{viewer.fullName || viewer.username}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>@{viewer.username}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11, color: grant ? '#10b981' : 'var(--muted)' }}>{grant ? '✓ Has Access' : 'No Access'}</span>
+                        {grant ? (
+                          <button className="btn btn-sm" style={{ background: '#ef444420', border: '1px solid #ef4444', color: '#ef4444', fontSize: 10, padding: '3px 10px' }}
+                            onClick={() => handleRevokeAccess(grant.id)}>Revoke</button>
+                        ) : (
+                          <button className="btn btn-sm btn-primary" style={{ fontSize: 10, padding: '3px 10px' }}
+                            onClick={() => handleGrantAccess(viewer.id, accessModal.user.id)}>Grant Access</button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {users.filter(u => u.id !== accessModal.user.id).length === 0 && (
+                  <p style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 20 }}>No other users to manage.</p>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-outline" onClick={() => setAccessModal(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Role Add/Edit Modal */}
       <div className={`modal-overlay${roleModal ? ' show' : ''}`} onClick={() => setRoleModal(false)}>

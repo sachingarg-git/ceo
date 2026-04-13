@@ -25,6 +25,8 @@ router.get('/', async (req, res) => {
         status: r.Status || 'Active',
         notes: r.Notes || '',
         timeSlot: r.TimeSlot || '',
+        timeTo: r.TimeTo || '',
+        createdBy: r.CreatedBy || '',
         dateAdded: r.DateAdded || '',
         dateStopped: r.DateStopped || '',
       };
@@ -54,9 +56,9 @@ router.post('/', async (req, res) => {
   try {
     const b = req.body;
     const result = await query(
-      `INSERT INTO RecurringTasks (Task, Priority, BatchType, Frequency, Weekday, WeekPosition, FixedDate, SLStatus, Status, Notes, TimeSlot, DateAdded, CompanyID)
+      `INSERT INTO RecurringTasks (Task, Priority, BatchType, Frequency, Weekday, WeekPosition, FixedDate, SLStatus, Status, Notes, TimeSlot, TimeTo, CreatedBy, DateAdded, CompanyID)
        OUTPUT INSERTED.ID
-       VALUES (@task, @priority, @batchType, @frequency, @weekday, @weekPosition, @fixedDate, @slStatus, @status, @notes, @timeSlot, @dateAdded, @companyId)`,
+       VALUES (@task, @priority, @batchType, @frequency, @weekday, @weekPosition, @fixedDate, @slStatus, @status, @notes, @timeSlot, @timeTo, @createdBy, @dateAdded, @companyId)`,
       {
         task: b.task || b.name || '',
         priority: b.priority || 'Medium',
@@ -69,6 +71,8 @@ router.post('/', async (req, res) => {
         status: b.status || 'Active',
         notes: b.notes || '',
         timeSlot: b.timeSlot || '',
+        timeTo: b.timeTo || '',
+        createdBy: b.createdBy || '',
         dateAdded: formatDateISO(new Date()),
         companyId: req.companyId,
       }
@@ -90,7 +94,7 @@ router.put('/:id', async (req, res) => {
       Task: 'task', Priority: 'priority', BatchType: 'batchType',
       Frequency: 'frequency', Weekday: 'weekday', WeekPosition: 'weekPosition',
       FixedDate: 'fixedDate', SLStatus: 'slStatus', Status: 'status',
-      Notes: 'notes', TimeSlot: 'timeSlot',
+      Notes: 'notes', TimeSlot: 'timeSlot', TimeTo: 'timeTo', CreatedBy: 'createdBy',
     };
 
     const sets = [];
@@ -127,6 +131,70 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// POST /sync-today — auto-add today's recurring tasks to QuickCapture (no duplicates)
+router.post('/sync-today', async (req, res) => {
+  try {
+    const companyId = req.companyId;
+    const now = new Date();
+    const todayISO = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+    const timeNow = formatTime12h(now);
+
+    const recurResult = await query(
+      `SELECT * FROM RecurringTasks WHERE CompanyID = @companyId AND Status = 'Active'`,
+      { companyId }
+    );
+
+    const today = new Date(); today.setHours(0,0,0,0);
+    let added = 0;
+
+    for (const r of recurResult.recordset) {
+      const nextOcc = computeNextOccurrence(r.Frequency, r.Weekday, r.WeekPosition, r.FixedDate);
+      if (!nextOcc || !sameDay(nextOcc, today)) continue;
+
+      // Avoid duplicates: check task name + date + company
+      const existing = await query(
+        `SELECT TOP 1 ID FROM QuickCapture WHERE CompanyID = @companyId AND Task = @task AND SchedDate = @date`,
+        { companyId, task: r.Task, date: todayISO }
+      );
+      if (existing.recordset.length > 0) continue;
+
+      await query(
+        `INSERT INTO QuickCapture (Date, Time, Task, Priority, BatchType, SendTo, SLStatus, SchedDate, SchedTimeFrom, SchedTimeTo, Deadline, Notes, Status, CompanyID, CreatedBy)
+         VALUES (@date, @time, @task, @priority, @batchType, @sendTo, @slStatus, @schedDate, @schedTimeFrom, @schedTimeTo, @deadline, @notes, @status, @companyId, @createdBy)`,
+        {
+          date: todayISO,
+          time: timeNow,
+          task: r.Task,
+          priority: r.Priority || 'Medium',
+          batchType: r.BatchType || '',
+          sendTo: 'Someday List',
+          slStatus: r.SLStatus || 'Scheduled',
+          schedDate: todayISO,
+          schedTimeFrom: r.TimeSlot || '',
+          schedTimeTo: r.TimeTo || '',
+          deadline: todayISO,
+          notes: r.Notes || '',
+          status: 'Not Started',
+          companyId,
+          createdBy: 'Auto (Recurring)',
+        }
+      );
+      added++;
+    }
+
+    res.json({ success: true, added, message: `${added} recurring task(s) synced to Quick Capture` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+function formatTime12h(d) {
+  let h = d.getHours(), m = d.getMinutes();
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${String(m).padStart(2,'0')} ${ap}`;
+}
 
 // ---- Helpers (ported from GS) ----
 

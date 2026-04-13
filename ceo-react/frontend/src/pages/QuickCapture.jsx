@@ -2,6 +2,82 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { api } from '../api';
 import { useApp } from '../App';
 
+// Determine if the current user can see a specific task based on per-user visibility rules
+function canSeeTaskByUser(task, currentUser, companyUsers, taskAccessGrants, isCompanyOwner) {
+  if (isCompanyOwner) return true; // owner always sees all
+  if (!task.createdBy || task.createdBy === 'Auto (Recurring)') return true; // no creator = public
+
+  // Own tasks always visible
+  const myName = currentUser?.name ? currentUser.name.replace(/\s*\(.*\)\s*$/, '').trim() : '';
+  const myUsername = currentUser?.username || '';
+  if (task.createdBy === myName || task.createdBy === myUsername) return true;
+
+  // Find creator in company users
+  const creator = companyUsers.find(u =>
+    u.fullName === task.createdBy || u.username === task.createdBy
+  );
+  if (!creator) return true; // unknown creator = show
+
+  // If creator is Private, need explicit grant
+  if (creator.taskPrivacy === 'Private') {
+    const mySubUserId = currentUser?.subUserId;
+    return taskAccessGrants.some(g => g.ownerUserId === creator.id && g.viewerUserId === mySubUserId);
+  }
+
+  return true; // Public
+}
+
+// Compute whether a recurring task applies to a given date string (YYYY-MM-DD)
+function doesRecurOn(rt, dateStr) {
+  if (!rt || (rt.status || '').toLowerCase() !== 'active') return false;
+  const date = new Date(dateStr + 'T00:00:00');
+  const freq = rt.frequency;
+  if (!freq) return false;
+
+  if (freq === 'Daily') return true;
+
+  if (freq === 'Weekly') {
+    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const targetDay = days.indexOf(rt.weekday);
+    if (targetDay < 0) return false;
+    const dateDay = (date.getDay() + 6) % 7; // 0=Monday
+    return dateDay === targetDay;
+  }
+
+  if (freq === 'Monthly') {
+    if (rt.fixedDate) {
+      const fd = new Date(rt.fixedDate + 'T00:00:00');
+      return date.getDate() === fd.getDate();
+    }
+    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const targetDay = days.indexOf(rt.weekday);
+    if (targetDay < 0) return false;
+    const jsTarget = (targetDay + 1) % 7;
+    const posMap = { First: 1, Second: 2, Third: 3, Fourth: 4, Last: 99 };
+    const pos = posMap[rt.weekPosition] || 1;
+    if (pos === 99) {
+      const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+      const diff = (lastDay.getDay() - jsTarget + 7) % 7;
+      return date.getDate() === lastDay.getDate() - diff;
+    }
+    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+    const offset = (jsTarget - firstDay.getDay() + 7) % 7;
+    return date.getDate() === 1 + offset + (pos - 1) * 7;
+  }
+
+  if (freq === 'Yearly') {
+    if (!rt.fixedDate) return false;
+    const fd = new Date(rt.fixedDate + 'T00:00:00');
+    return date.getMonth() === fd.getMonth() && date.getDate() === fd.getDate();
+  }
+
+  if (freq === 'Fixed Date') {
+    return dateStr === rt.fixedDate;
+  }
+
+  return false;
+}
+
 const TIME_SLOTS = [
   '7:00 AM','7:30 AM','8:00 AM','8:30 AM','9:00 AM','9:30 AM',
   '10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','12:30 PM',
@@ -51,13 +127,30 @@ function currentTimeFormatted() {
   return h + ':' + min + ' ' + ampm;
 }
 
+function calcDuration(from, to) {
+  if (!from || !to) return '';
+  const parse = t => {
+    const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!m) return null;
+    let h = parseInt(m[1]), min = parseInt(m[2]);
+    if (m[3].toUpperCase() === 'PM' && h !== 12) h += 12;
+    if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+    return h * 60 + min;
+  };
+  const f = parse(from), t2 = parse(to);
+  if (f === null || t2 === null || t2 <= f) return '';
+  const diff = t2 - f;
+  const h = Math.floor(diff / 60), m = diff % 60;
+  return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+}
+
 /* ── column map for keyboard nav ─────────────────────────── */
-const COL_COUNT = 14; // checkbox(0), #(1), created(2), desc(3), priority(4), schedDate(5), deadline(6), sendTo(7), batch(8), slStatus(9), from(10), to(11), notes(12), actions(13)
+const COL_COUNT = 16; // checkbox(0), #(1), created(2), desc(3), priority(4), schedDate(5), deadline(6), sendTo(7), batch(8), slStatus(9), from(10), to(11), duration(12), createdBy(13), notes(14), actions(15)
 
 /* ── component ───────────────────────────────────────────── */
 
 export default function QuickCapture() {
-  const { showToast } = useApp();
+  const { showToast, user, viewMode, setViewMode, canViewAll, isCompanyOwner, companyUsers = [], taskAccessGrants = [] } = useApp();
   const [rows, setRows] = useState([]);
   const [recurringTasks, setRecurringTasks] = useState([]);
   const [masters, setMasters] = useState(null);
@@ -105,6 +198,7 @@ export default function QuickCapture() {
   async function loadData() {
     setLoading(true);
     try {
+      await api.syncRecurringTasks().catch(() => {}); // sync recurring tasks silently
       const [captureRes, mastersRes, recurRes] = await Promise.all([
         api.getQuickCapture(), api.getMasters(), api.getRecurringTasks()
       ]);
@@ -230,7 +324,7 @@ export default function QuickCapture() {
   const notScheduledCount = rows.filter(r => !r.schedDate && r.slStatus !== 'Completed' && r.sendTo !== 'Information System').length;
 
   /* ── filtering ── */
-  const filtered = rows.filter(r => {
+  let filtered = rows.filter(r => {
     // Hide tasks sent to Information System (they show in Info System page instead)
     if (!filterSendTo && r.sendTo === 'Information System') return false;
     if (search && !(r.description || '').toLowerCase().includes(search.toLowerCase())) return false;
@@ -243,6 +337,55 @@ export default function QuickCapture() {
     if (filterDate === 'notscheduled' && !!r.schedDate) return false;
     return true;
   });
+  // viewMode filter
+  if (viewMode === 'me') {
+    const myName = user?.name ? user.name.replace(/\s*\(.*\)\s*$/, '').trim() : '';
+    const myUsername = user?.username || '';
+    filtered = filtered.filter(r =>
+      !r.createdBy ||
+      r.createdBy === myName ||
+      r.createdBy === myUsername ||
+      r.createdBy === 'Auto (Recurring)'  // always show auto-synced
+    );
+  }
+
+  // Per-user privacy filter (only when viewMode is 'all' and has rights)
+  if (viewMode === 'all' && canViewAll && !isCompanyOwner) {
+    filtered = filtered.filter(r => canSeeTaskByUser(r, user, companyUsers, taskAccessGrants, isCompanyOwner));
+  }
+
+  // Compute virtual recurring rows for the currently viewed date (today or tomorrow)
+  const virtualRecurRows = useMemo(() => {
+    const targetDate = filterDate === 'today' ? todayISO2
+                     : filterDate === 'tomorrow' ? tomorrowISO
+                     : null; // only show virtual rows when filtering by today or tomorrow
+    if (!targetDate || !recurringTasks.length) return [];
+
+    // Task names already in QC for this date (to avoid duplicates)
+    const qcKeys = new Set(
+      rows
+        .filter(r => r.schedDate === targetDate && r.slStatus !== 'Completed')
+        .map(r => (r.description || '').toLowerCase().trim())
+    );
+
+    return recurringTasks
+      .filter(rt => doesRecurOn(rt, targetDate))
+      .filter(rt => !qcKeys.has((rt.task || rt.name || '').toLowerCase().trim()))
+      .map(rt => ({
+        id: 'rt-virtual-' + rt.id,
+        _isVirtualRecurring: true,
+        description: rt.task || rt.name || '',
+        priority: rt.priority || 'Medium',
+        batchType: rt.batchType || '',
+        schedDate: targetDate,
+        schedTimeFrom: rt.timeSlot || '',
+        schedTimeTo: rt.timeTo || '',
+        slStatus: 'Scheduled',
+        sendTo: 'Someday List',
+        createdBy: 'Recurring',
+        _recurFreq: rt.frequency,
+      }));
+  }, [recurringTasks, rows, filterDate, todayISO2, tomorrowISO]);
 
   /* ── inline cell change ── */
   async function handleCellChange(id, field, value) {
@@ -323,6 +466,7 @@ export default function QuickCapture() {
       if (!editingId) {
         payload.date = todayISO();
         payload.time = currentTimeFormatted();
+        payload.createdBy = user?.name || user?.username || 'Unknown';
       }
       const res = editingId ? await api.updateTask(editingId, payload) : await api.addTask(payload);
       if (res.success) { showToast(editingId ? 'Task updated' : 'Task added', 'success'); closeModal(); loadData(); }
@@ -345,7 +489,7 @@ export default function QuickCapture() {
     const nowTime = currentTimeFormatted();
     for (const line of lines) {
       try {
-        const res = await api.addTask({ description: line, priority: 'Medium', sendTo: 'Someday List', slStatus: 'Scheduled', date: now, time: nowTime });
+        const res = await api.addTask({ description: line, priority: 'Medium', sendTo: 'Someday List', slStatus: 'Scheduled', date: now, time: nowTime, createdBy: user?.name || user?.username || 'Unknown' });
         if (res.success) added++;
       } catch { /* skip */ }
     }
@@ -436,6 +580,25 @@ export default function QuickCapture() {
     );
   }
 
+  /* ── no rights overlay ── */
+  if (viewMode === 'all' && !canViewAll) {
+    return (
+      <div>
+        <div className="page-header"><div></div></div>
+        <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>No rights to view all tasks</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 24 }}>
+            Your company admin has restricted access. Switch to "Me Only" to see your tasks.
+          </div>
+          <button className="btn btn-primary" onClick={() => setViewMode('me')}>
+            👤 Switch to Me Only
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const modalFromDisabled = !form.schedDate;
   const modalToDisabled = !form.schedDate;
   const modalSlots = form.schedDate ? getFilteredSlots(form.schedDate, editingId) : [];
@@ -513,7 +676,10 @@ export default function QuickCapture() {
 
       {/* ── Split filtered into active vs completed ── */}
       {(() => {
-        const activeRows = filtered.filter(r => r.slStatus !== 'Completed');
+        const activeRows = [
+          ...filtered.filter(r => r.slStatus !== 'Completed'),
+          ...virtualRecurRows,
+        ];
         const completedRows = filtered.filter(r => r.slStatus === 'Completed');
 
         // shared sticky action th style
@@ -543,6 +709,8 @@ export default function QuickCapture() {
               <th style={{ minWidth: 85, width: 85 }}>SL Status</th>
               <th style={{ minWidth: 100, width: 100 }}>From</th>
               <th style={{ minWidth: 100, width: 100 }}>To</th>
+              <th style={{ minWidth: 75, width: 75 }}>Duration</th>
+              <th style={{ minWidth: 110, width: 110 }}>Created By</th>
               <th style={{ minWidth: 110, width: 110 }}>Notes</th>
               <th style={stickyTh}>Actions</th>
             </tr>
@@ -556,7 +724,7 @@ export default function QuickCapture() {
             {/* toolbar */}
             <div className="ss-toolbar">
               <div className="ss-toolbar-left">
-                <input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} checked={selected.size > 0 && selected.size === activeRows.length} />
+                <input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} checked={selected.size > 0 && selected.size === filtered.filter(r => r.slStatus !== 'Completed').length} />
                 <button className={'ss-del-btn' + (selected.size > 0 ? ' active' : '')} onClick={requestDeleteSelected} disabled={selected.size === 0}>&#10005; Delete</button>
                 {selected.size > 0 && (
                   <button style={{
@@ -580,85 +748,127 @@ export default function QuickCapture() {
                 <TableHead showCheck={true} />
                 <tbody ref={tbodyRef} onKeyDown={handleKeyDown}>
                   {activeRows.length === 0 ? (
-                    <tr><td colSpan={14} style={{ textAlign: 'center', padding: 30, color: 'var(--muted)' }}>
+                    <tr><td colSpan={16} style={{ textAlign: 'center', padding: 30, color: 'var(--muted)' }}>
                       {rows.length === 0 ? <>&#9889; No tasks captured yet. Click "Bulk Add" to get started!</> : 'No active tasks match your filters.'}
                     </td></tr>
                   ) : activeRows.map((row, idx) => {
+                    const isVirtual = !!row._isVirtualRecurring;
                     const hasSchedDate = !!row.schedDate;
-                    const fromSlots = hasSchedDate ? getFilteredSlots(row.schedDate, row.id) : [];
-                    const toSlotList = getToSlots(row.schedTimeFrom, row.schedDate, row.id);
-                    const hasRecurConflict = recurringConflicts.has(row.id);
+                    const fromSlots = hasSchedDate && !isVirtual ? getFilteredSlots(row.schedDate, row.id) : [];
+                    const toSlotList = !isVirtual ? getToSlots(row.schedTimeFrom, row.schedDate, row.id) : [];
+                    const hasRecurConflict = !isVirtual && recurringConflicts.has(row.id);
 
                     return (
-                      <tr key={row.id}>
+                      <tr key={row.id}
+                        style={isVirtual ? { background: 'rgba(99,102,241,0.06)', opacity: 0.85 } : undefined}
+                      >
                         <td data-row={idx} data-col={0} style={{ textAlign: 'center' }}>
-                          <input type="checkbox" className="ss-check" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} />
+                          {!isVirtual && <input type="checkbox" className="ss-check" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} />}
                         </td>
                         <td data-row={idx} data-col={1} className="ss-num">
-                          {idx + 1}
+                          {isVirtual ? <span title="Recurring task" style={{fontSize:11}}>🔄</span> : idx + 1}
                           {hasRecurConflict && <span title="Conflicts with a recurring task" style={{ color: '#f59e0b', marginLeft: 4, cursor: 'help', fontSize: 13 }}>&#9888;</span>}
                         </td>
                         <td data-row={idx} data-col={2} style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                          {formatCreated(row.date, row.time)}
+                          {isVirtual
+                            ? <span style={{ fontSize: 10, color: 'var(--primary)', fontWeight: 600, background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: 6 }}>{row._recurFreq || 'Recurring'}</span>
+                            : formatCreated(row.date, row.time)
+                          }
                         </td>
-                        <td data-row={idx} data-col={3} style={{ height: 'auto', verticalAlign: 'top', padding: 0 }}>
-                          <textarea className="ss-cell ss-desc-cell" defaultValue={row.description} title={row.description} rows={1}
-                            onInput={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-                            onFocus={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-                            onBlur={e => { if (e.target.value !== row.description) handleCellChange(row.id, 'description', e.target.value); }} />
+                        <td data-row={idx} data-col={3} style={{ height: 'auto', verticalAlign: 'top', padding: isVirtual ? '6px 8px' : 0 }}>
+                          {isVirtual
+                            ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{row.description}</span>
+                            : <textarea className="ss-cell ss-desc-cell" defaultValue={row.description} title={row.description} rows={1}
+                                onInput={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                                onFocus={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                                onBlur={e => { if (e.target.value !== row.description) handleCellChange(row.id, 'description', e.target.value); }} />
+                          }
                         </td>
                         <td data-row={idx} data-col={4}>
-                          <select className="ss-cell" value={row.priority || ''} onChange={e => handleCellChange(row.id, 'priority', e.target.value)}>
-                            <option value="">-</option>
-                            {(masters?.priority || ['High','Medium','Low']).map(p => <option key={p} value={p}>{p}</option>)}
-                          </select>
+                          {isVirtual
+                            ? <span style={{ fontSize: 11, color: 'var(--muted)' }}>{row.priority}</span>
+                            : <select className="ss-cell" value={row.priority || ''} onChange={e => handleCellChange(row.id, 'priority', e.target.value)}>
+                                <option value="">-</option>
+                                {(masters?.priority || ['High','Medium','Low']).map(p => <option key={p} value={p}>{p}</option>)}
+                              </select>
+                          }
                         </td>
                         <td data-row={idx} data-col={5}>
-                          <input type="date" className="ss-cell ss-date-only" value={row.schedDate || ''} onChange={e => handleCellChange(row.id, 'schedDate', e.target.value)} />
+                          {isVirtual
+                            ? <span style={{ fontSize: 11, color: 'var(--muted)' }}>{row.schedDate}</span>
+                            : <input type="date" className="ss-cell ss-date-only" value={row.schedDate || ''} onChange={e => handleCellChange(row.id, 'schedDate', e.target.value)} />
+                          }
                         </td>
                         <td data-row={idx} data-col={6}>
-                          <input type="date" className="ss-cell ss-date-only" value={row.deadline || ''} onChange={e => handleCellChange(row.id, 'deadline', e.target.value)} />
+                          {isVirtual
+                            ? <span style={{ fontSize: 11, color: 'var(--muted)' }}>-</span>
+                            : <input type="date" className="ss-cell ss-date-only" value={row.deadline || ''} onChange={e => handleCellChange(row.id, 'deadline', e.target.value)} />
+                          }
                         </td>
                         <td data-row={idx} data-col={7}>
-                          <select className="ss-cell" value={row.sendTo || ''} onChange={e => handleCellChange(row.id, 'sendTo', e.target.value)}>
-                            <option value="Someday List">Someday List</option><option value="Information System">Information System</option>
-                          </select>
+                          {isVirtual
+                            ? <span style={{ fontSize: 11, color: 'var(--muted)' }}>{row.sendTo}</span>
+                            : <select className="ss-cell" value={row.sendTo || ''} onChange={e => handleCellChange(row.id, 'sendTo', e.target.value)}>
+                                <option value="Someday List">Someday List</option><option value="Information System">Information System</option>
+                              </select>
+                          }
                         </td>
                         <td data-row={idx} data-col={8}>
-                          <select className="ss-cell" value={row.batchType || ''} onChange={e => handleCellChange(row.id, 'batchType', e.target.value)}>
-                            <option value="">-</option>
-                            {(masters?.batchType || []).map(b => <option key={b} value={b}>{b}</option>)}
-                          </select>
+                          {isVirtual
+                            ? <span style={{ fontSize: 11, color: 'var(--muted)' }}>{row.batchType || '-'}</span>
+                            : <select className="ss-cell" value={row.batchType || ''} onChange={e => handleCellChange(row.id, 'batchType', e.target.value)}>
+                                <option value="">-</option>
+                                {(masters?.batchType || []).map(b => <option key={b} value={b}>{b}</option>)}
+                              </select>
+                          }
                         </td>
                         <td data-row={idx} data-col={9}>
-                          <select className="ss-cell" value={row.slStatus || ''} onChange={e => handleCellChange(row.id, 'slStatus', e.target.value)}>
-                            {(masters?.schedStatus || ['Scheduled','Waiting','Completed','Skipped']).map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
+                          {isVirtual
+                            ? <span style={{ fontSize: 11, color: 'var(--muted)' }}>{row.slStatus}</span>
+                            : <select className="ss-cell" value={row.slStatus || ''} onChange={e => handleCellChange(row.id, 'slStatus', e.target.value)}>
+                                {(masters?.schedStatus || ['Scheduled','Waiting','Completed','Skipped']).map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                          }
                         </td>
                         <td data-row={idx} data-col={10}>
-                          <select className="ss-cell" value={row.schedTimeFrom || ''} disabled={!hasSchedDate}
-                            style={!hasSchedDate ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-                            onChange={e => handleCellChange(row.id, 'schedTimeFrom', e.target.value)}>
-                            <option value="">-</option>
-                            {fromSlots.map(s => <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>)}
-                          </select>
+                          {isVirtual
+                            ? <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600 }}>{row.schedTimeFrom || '-'}</span>
+                            : <select className="ss-cell" value={row.schedTimeFrom || ''} disabled={!hasSchedDate}
+                                style={!hasSchedDate ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                                onChange={e => handleCellChange(row.id, 'schedTimeFrom', e.target.value)}>
+                                <option value="">-</option>
+                                {fromSlots.map(s => <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>)}
+                              </select>
+                          }
                         </td>
                         <td data-row={idx} data-col={11}>
-                          <select className="ss-cell" value={row.schedTimeTo || ''} disabled={!hasSchedDate}
-                            style={!hasSchedDate ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-                            onChange={e => handleCellChange(row.id, 'schedTimeTo', e.target.value)}>
-                            <option value="">-</option>
-                            {Array.isArray(toSlotList) && toSlotList.length > 0 && typeof toSlotList[0] === 'object'
-                              ? toSlotList.map(s => <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>)
-                              : (toSlotList || []).map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
+                          {isVirtual
+                            ? <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600 }}>{row.schedTimeTo || '-'}</span>
+                            : <select className="ss-cell" value={row.schedTimeTo || ''} disabled={!hasSchedDate}
+                                style={!hasSchedDate ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                                onChange={e => handleCellChange(row.id, 'schedTimeTo', e.target.value)}>
+                                <option value="">-</option>
+                                {Array.isArray(toSlotList) && toSlotList.length > 0 && typeof toSlotList[0] === 'object'
+                                  ? toSlotList.map(s => <option key={s.slot} value={s.slot} disabled={s.disabled}>{s.label}</option>)
+                                  : (toSlotList || []).map(t => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                          }
                         </td>
-                        <td data-row={idx} data-col={12}>
-                          <input className="ss-cell" defaultValue={row.notes || ''}
-                            onBlur={e => { if (e.target.value !== (row.notes || '')) handleCellChange(row.id, 'notes', e.target.value); }} />
+                        <td data-row={idx} data-col={12} style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, padding: '0 8px', whiteSpace: 'nowrap' }}>
+                          {calcDuration(row.schedTimeFrom, row.schedTimeTo)}
                         </td>
-                        <td data-row={idx} data-col={13} style={stickyTd('#fff')}>
-                          <button className="ss-del" title="Delete" onClick={() => setDeleteId(row.id)}>&#10005;</button>
+                        <td data-row={idx} data-col={13} style={{ fontSize: 11, color: 'var(--muted)', padding: '0 8px', whiteSpace: 'nowrap' }}>
+                          {row.createdBy || '-'}
+                        </td>
+                        <td data-row={idx} data-col={14}>
+                          {isVirtual
+                            ? <span style={{ fontSize: 11, color: 'var(--muted)' }}>-</span>
+                            : <input className="ss-cell" defaultValue={row.notes || ''}
+                                onBlur={e => { if (e.target.value !== (row.notes || '')) handleCellChange(row.id, 'notes', e.target.value); }} />
+                          }
+                        </td>
+                        <td data-row={idx} data-col={15} style={stickyTd('#fff')}>
+                          {!isVirtual && <button className="ss-del" title="Delete" onClick={() => setDeleteId(row.id)}>&#10005;</button>}
                         </td>
                       </tr>
                     );
@@ -699,6 +909,8 @@ export default function QuickCapture() {
                       <th style={{ minWidth: 90, width: 90 }}>Batch</th>
                       <th style={{ minWidth: 100, width: 100 }}>From</th>
                       <th style={{ minWidth: 100, width: 100 }}>To</th>
+                      <th style={{ minWidth: 75, width: 75 }}>Duration</th>
+                      <th style={{ minWidth: 110, width: 110 }}>Created By</th>
                       <th style={{ minWidth: 130, width: 130 }}>Notes</th>
                       <th style={{ ...stickyTh, background: '#065f46' }}>Actions</th>
                     </tr>
@@ -720,6 +932,8 @@ export default function QuickCapture() {
                         <td style={{ fontSize: 11, color: '#6b7280' }}>{row.batchType || '-'}</td>
                         <td style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>{row.schedTimeFrom || '-'}</td>
                         <td style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>{row.schedTimeTo || '-'}</td>
+                        <td style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600 }}>{calcDuration(row.schedTimeFrom, row.schedTimeTo)}</td>
+                        <td style={{ fontSize: 11, color: '#6b7280' }}>{row.createdBy || '-'}</td>
                         <td style={{ fontSize: 11, color: '#6b7280' }}>{row.notes || '-'}</td>
                         <td style={stickyTd('#f0fdf4')}>
                           <button className="ss-del" title="Delete" onClick={() => setDeleteId(row.id)} style={{ color: '#dc2626' }}>&#10005;</button>

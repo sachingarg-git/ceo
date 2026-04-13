@@ -552,6 +552,82 @@ function OnlineIndicator({ user }) {
   );
 }
 
+function ViewModeDropdown() {
+  const { viewMode, setViewMode, canViewAll, user } = useApp();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  // Only show for company users (not internal CEO/EA)
+  if (!user || user.type !== 'company') return null;
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const isAll = viewMode === 'all';
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        title="Task view filter"
+        style={{
+          background: open ? 'var(--primary)' : 'var(--card-bg)',
+          border: '1.5px solid var(--border)', borderRadius: 10,
+          padding: '5px 12px', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 6,
+          color: open ? '#fff' : 'var(--text)', fontSize: 12, fontWeight: 700,
+          transition: 'all 0.2s',
+        }}
+      >
+        <span>{isAll ? '📋' : '👤'}</span>
+        <span>{isAll ? 'All' : 'Me Only'}</span>
+        <span style={{ fontSize: 9, opacity: 0.7 }}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 9999,
+          background: 'var(--card-bg)', border: '1px solid var(--border)',
+          borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.15)', minWidth: 160, overflow: 'hidden',
+        }}>
+          <div style={{ padding: '8px 12px', fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid var(--border)' }}>
+            Task View
+          </div>
+          {[
+            { value: 'all', icon: '📋', label: 'All', desc: canViewAll ? 'Show all tasks' : 'No rights to view all' },
+            { value: 'me',  icon: '👤', label: 'Me Only', desc: 'Show only my tasks' },
+          ].map(opt => (
+            <div
+              key={opt.value}
+              onClick={() => { setViewMode(opt.value); setOpen(false); }}
+              style={{
+                padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+                background: viewMode === opt.value ? 'rgba(13,110,110,0.08)' : 'transparent',
+                borderLeft: viewMode === opt.value ? '3px solid var(--primary)' : '3px solid transparent',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { if (viewMode !== opt.value) e.currentTarget.style.background = 'rgba(13,110,110,0.04)'; }}
+              onMouseLeave={e => { if (viewMode !== opt.value) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <span style={{ fontSize: 16 }}>{opt.icon}</span>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: viewMode === opt.value ? 'var(--primary)' : 'var(--text)' }}>{opt.label}</div>
+                <div style={{ fontSize: 10, color: 'var(--muted)' }}>{opt.desc}</div>
+              </div>
+              {viewMode === opt.value && <span style={{ marginLeft: 'auto', color: 'var(--primary)', fontSize: 12 }}>✓</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Topbar({ onToggleSidebar }) {
   const { currentPage, user, theme, toggleTheme } = useApp();
 
@@ -564,6 +640,7 @@ export default function Topbar({ onToggleSidebar }) {
       <div className="topbar-right">
         <PlanBadge />
         <OnlineIndicator user={user} />
+        <ViewModeDropdown />
         <CalendarDropdown />
         <ISTClock />
         <button onClick={toggleTheme} className="theme-toggle-btn" title={theme === 'light' ? 'Switch to Dark' : 'Switch to Light'}>

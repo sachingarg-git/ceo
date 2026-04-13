@@ -607,13 +607,29 @@ bot.on('callback_query', async (query_cb) => {
     });
     
     try {
+      // Get session to look up who created the task by phone number
+      const session = await getSession(chatId);
+
+      // Get CreatedBy: check if phone belongs to a sub-user
+      const createdByResult = await query(`
+        SELECT TOP 1 ISNULL(NULLIF(FullName,''), Username) as DisplayName
+        FROM CompanyUsers
+        WHERE CompanyID = @cid
+          AND RIGHT(REPLACE(REPLACE(REPLACE(Mobile, '+', ''), ' ', ''), '-', ''), 10) = RIGHT(REPLACE(REPLACE(REPLACE(@phone, '+', ''), ' ', ''), '-', ''), 10)
+          AND IsActive = 1
+      `, { cid: pending.companyId, phone: session?.PhoneNumber || '' });
+
+      const createdBy = createdByResult.recordset.length > 0
+        ? createdByResult.recordset[0].DisplayName
+        : session?.CompanyName || ''; // main company owner
+
       const result = await query(`
-        INSERT INTO QuickCapture (Task, SchedDate, SchedTimeFrom, SchedTimeTo, Priority, SendTo, SLStatus, CompanyID, Date, Time, Deadline)
+        INSERT INTO QuickCapture (Task, SchedDate, SchedTimeFrom, SchedTimeTo, Priority, SendTo, SLStatus, CompanyID, Date, Time, Deadline, CreatedBy)
         OUTPUT INSERTED.ID
-        VALUES (@task, @date, @timeFrom, @timeTo, @priority, @sendTo, @slStatus, @cid, @creationDate, @creationTime, @deadline)
-      `, { 
-        task: pending.description, 
-        date: taskDate, 
+        VALUES (@task, @date, @timeFrom, @timeTo, @priority, @sendTo, @slStatus, @cid, @creationDate, @creationTime, @deadline, @createdBy)
+      `, {
+        task: pending.description,
+        date: taskDate,
         timeFrom: pending.timeFrom,
         timeTo: pending.timeTo,
         priority: pending.priority,
@@ -622,7 +638,8 @@ bot.on('callback_query', async (query_cb) => {
         cid: pending.companyId,
         creationDate,
         creationTime,
-        deadline
+        deadline,
+        createdBy
       });
       
       const taskId = result.recordset[0].ID;
