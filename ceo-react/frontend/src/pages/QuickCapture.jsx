@@ -354,12 +354,12 @@ export default function QuickCapture() {
     if (filterDate === 'notscheduled' && !!r.schedDate) return false;
     return true;
   });
-  // viewMode filter — normalize both sides to handle legacy stored full names
+  // viewMode filter — "Me Only" shows ONLY tasks created by the logged-in user
   if (viewMode === 'me') {
     const myName = stripCompanySuffix(user?.name || '').toLowerCase();
     const myUsername = (user?.username || '').toLowerCase();
     filtered = filtered.filter(r => {
-      if (!r.createdBy || r.createdBy === 'Auto (Recurring)') return true;
+      if (!r.createdBy) return false; // no createdBy = not mine
       const storedBy = stripCompanySuffix(r.createdBy).toLowerCase();
       return storedBy === myName || storedBy === myUsername;
     });

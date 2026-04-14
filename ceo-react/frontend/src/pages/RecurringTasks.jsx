@@ -173,15 +173,15 @@ export default function RecurringTasks() {
       if (filterFrequency && r.frequency !== filterFrequency) return false;
       return true;
     });
-    // viewMode filter
+    // viewMode filter — "Me Only" shows ONLY tasks created by the logged-in user
     if (viewMode === 'me') {
-      const myName = user?.name ? user.name.replace(/\s*\(.*\)\s*$/, '').trim() : '';
-      const myUsername = user?.username || '';
-      result = result.filter(r =>
-        !r.createdBy ||
-        r.createdBy === myName ||
-        r.createdBy === myUsername
-      );
+      const myName = stripCompanySuffix(user?.name || '').toLowerCase();
+      const myUsername = (user?.username || '').toLowerCase();
+      result = result.filter(r => {
+        if (!r.createdBy) return false;
+        const storedBy = stripCompanySuffix(r.createdBy).toLowerCase();
+        return storedBy === myName || storedBy === myUsername;
+      });
     }
     // Per-user privacy filter (only when viewMode is 'all' and has rights)
     if (viewMode === 'all' && canViewAll && !isCompanyOwner) {
