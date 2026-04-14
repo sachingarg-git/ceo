@@ -410,9 +410,6 @@ export default function RecurringTasks() {
       <div style={{ borderRadius: 'var(--radius)', overflow: 'hidden', border: '1px solid #e0e8f0' }}>
         <div className="ss-toolbar">
           <div className="ss-toolbar-left">
-            <input type="checkbox" className="ss-check"
-              onChange={e => toggleSelectAll(e.target.checked)}
-              checked={selected.size > 0 && selected.size === filtered.length} />
             <button className={'ss-del-btn' + (selected.size > 0 ? ' active' : '')}
               onClick={deleteSelected} disabled={selected.size === 0}>
               &#10005; Delete
@@ -424,7 +421,7 @@ export default function RecurringTasks() {
           <table className="ss-table">
             <thead>
               <tr>
-                <th style={{ width: 28 }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>
+                <th style={{ width: 28, position: 'sticky', left: 0, zIndex: 4, background: 'var(--primary)', textAlign: 'center' }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>
                 <th style={{ width: 28 }}>#</th>
                 <th style={{ minWidth: 240 }}>Task Name</th>
                 <th style={{ width: 80 }}>Priority</th>
@@ -459,7 +456,7 @@ export default function RecurringTasks() {
                     return (
                       <tr key={row.id}>
                         {/* 0: checkbox */}
-                        <td data-row={idx} data-col={0} style={{ textAlign: 'center' }}>
+                        <td data-row={idx} data-col={0} style={{ textAlign: 'center', position: 'sticky', left: 0, zIndex: 1, background: '#fff' }}>
                           <input type="checkbox" className="ss-check" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} />
                         </td>
                         {/* 1: # */}

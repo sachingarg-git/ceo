@@ -711,7 +711,7 @@ export default function QuickCapture() {
         const TableHead = ({ showCheck = true }) => (
           <thead>
             <tr>
-              {showCheck && <th style={{ minWidth: 28, width: 28 }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>}
+              {showCheck && <th style={{ minWidth: 28, width: 28, position: 'sticky', left: 0, zIndex: 4, background: 'var(--primary)', textAlign: 'center' }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>}
               <th style={{ minWidth: 28, width: 28 }}>#</th>
               <th style={{ minWidth: 130, width: 130 }}>Created</th>
               <th style={{ minWidth: 200 }}>Description</th>
@@ -738,7 +738,6 @@ export default function QuickCapture() {
             {/* toolbar */}
             <div className="ss-toolbar">
               <div className="ss-toolbar-left">
-                <input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} checked={selected.size > 0 && selected.size === filtered.filter(r => r.slStatus !== 'Completed').length} />
                 <button className={'ss-del-btn' + (selected.size > 0 ? ' active' : '')} onClick={requestDeleteSelected} disabled={selected.size === 0}>&#10005; Delete</button>
                 {selected.size > 0 && (
                   <button style={{
@@ -776,7 +775,7 @@ export default function QuickCapture() {
                       <tr key={row.id}
                         style={isVirtual ? { background: 'rgba(99,102,241,0.06)', opacity: 0.85 } : undefined}
                       >
-                        <td data-row={idx} data-col={0} style={{ textAlign: 'center' }}>
+                        <td data-row={idx} data-col={0} style={{ textAlign: 'center', position: 'sticky', left: 0, zIndex: 1, background: isVirtual ? 'rgba(99,102,241,0.06)' : '#fff' }}>
                           {!isVirtual && <input type="checkbox" className="ss-check" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} />}
                         </td>
                         <td data-row={idx} data-col={1} className="ss-num">
