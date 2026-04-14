@@ -103,12 +103,66 @@ function calcDuration(from, to) {
   return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
 }
 
-// Returns TIME_SLOTS filtered to only those after the given fromSlot
-function getValidToSlots(fromSlot) {
-  if (!fromSlot) return TIME_SLOTS;
+// Returns TIME_SLOTS after fromSlot with conflict info from other RT rows + QC rows
+function getValidToSlots(fromSlot, currentRow, otherRtRows, qcRows) {
+  if (!fromSlot) return TIME_SLOTS.map(t => ({ slot: t, booked: false }));
   const idx = TIME_SLOTS.indexOf(fromSlot);
-  return idx >= 0 ? TIME_SLOTS.slice(idx + 1) : TIME_SLOTS;
+  const afterSlots = idx >= 0 ? TIME_SLOTS.slice(idx + 1) : TIME_SLOTS;
+  const fromMin = parseTimeToMin(fromSlot);
+  const bookedMins = getBookedMinutes(currentRow, otherRtRows, qcRows);
+
+  return afterSlots.map(slot => {
+    const slotMin = parseTimeToMin(slot);
+    let booked = false;
+    if (slotMin !== null) {
+      for (let m = fromMin; m < slotMin; m += 30) {
+        if (bookedMins.has(m)) { booked = true; break; }
+      }
+    }
+    return { slot, booked };
+  });
 }
+// Returns set of minute-values booked by other active RT rows + QC rows on overlapping dates
+function getBookedMinutes(currentRow, otherRtRows, qcRows) {
+  const bookedMins = new Set();
+  if (!currentRow) return bookedMins;
+
+  // 1. Other Recurring Tasks on same day pattern
+  if (otherRtRows) {
+    otherRtRows.forEach(other => {
+      if (!other.timeSlot || (other.status || '').toLowerCase() !== 'active') return;
+      const freq = (currentRow.frequency || '').toLowerCase();
+      const oFreq = (other.frequency || '').toLowerCase();
+      let overlaps = false;
+      if (freq === 'daily' || oFreq === 'daily') overlaps = true;
+      else if (freq === 'weekly' && oFreq === 'weekly') overlaps = currentRow.weekday === other.weekday;
+      else if (freq === 'monthly' && oFreq === 'monthly') overlaps = currentRow.weekday === other.weekday && currentRow.weekPosition === other.weekPosition;
+      else if (freq === 'fixed date' && oFreq === 'fixed date') overlaps = currentRow.fixedDate === other.fixedDate;
+      else overlaps = true;
+      if (!overlaps) return;
+      const otherFrom = parseTimeToMin(other.timeSlot);
+      const otherTo = other.timeTo ? parseTimeToMin(other.timeTo) : (otherFrom !== null ? otherFrom + 30 : null);
+      if (otherFrom === null) return;
+      const otherEnd = otherTo !== null ? otherTo : otherFrom + 30;
+      for (let m = otherFrom; m < otherEnd; m += 30) bookedMins.add(m);
+    });
+  }
+
+  // 2. Quick Capture rows that have a scheduled time (any date — conservative block)
+  if (qcRows) {
+    qcRows.forEach(qc => {
+      if (!qc.schedTimeFrom || qc.slStatus === 'Completed') return;
+      const qcFrom = parseTimeToMin(qc.schedTimeFrom);
+      const qcTo = qc.schedTimeTo ? parseTimeToMin(qc.schedTimeTo) : (qcFrom !== null ? qcFrom + 30 : null);
+      if (qcFrom === null) return;
+      const qcEnd = qcTo !== null ? qcTo : qcFrom + 30;
+      for (let m = qcFrom; m < qcEnd; m += 30) bookedMins.add(m);
+    });
+  }
+
+  return bookedMins;
+}
+
 function showFixedDate(freq) {
   return freq === 'Yearly' || freq === 'Fixed Date' || freq === 'Monthly';
 }
@@ -130,6 +184,7 @@ function formatNextOcc(isoStr) {
 export default function RecurringTasks() {
   const { showToast, user, viewMode, setViewMode, canViewAll, isCompanyOwner, companyUsers = [], taskAccessGrants = [] } = useApp();
   const [rows, setRows] = useState([]);
+  const [qcRows, setQcRows] = useState([]); // Quick Capture rows for slot conflict detection
   const [masters, setMasters] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -152,12 +207,14 @@ export default function RecurringTasks() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [res, mastersRes] = await Promise.all([
+      const [res, mastersRes, qcRes] = await Promise.all([
         api.getRecurringTasks(),
-        api.getMasters()
+        api.getMasters(),
+        api.getQuickCapture(),
       ]);
       if (res.success) setRows(res.rows || []);
       if (mastersRes.success || mastersRes.data) setMasters(mastersRes.masters || mastersRes.data || mastersRes);
+      if (qcRes.success) setQcRows(qcRes.rows || []);
     } catch (err) {
       showToast('Error loading data: ' + err.message, 'error');
     }
@@ -507,17 +564,30 @@ export default function RecurringTasks() {
                         </td>
                         {/* 8: Time From */}
                         <td data-row={idx} data-col={8}>
-                          <select className="ss-cell" value={row.timeSlot || ''} onChange={e => handleCellChange(row.id, 'timeSlot', e.target.value)}>
-                            <option value="">--</option>
-                            {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
+                          {(() => {
+                            const bookedMins = getBookedMinutes(row, rows.filter(r => r.id !== row.id), qcRows);
+                            return (
+                              <select className="ss-cell" value={row.timeSlot || ''} onChange={e => handleCellChange(row.id, 'timeSlot', e.target.value)}>
+                                <option value="">--</option>
+                                {TIME_SLOTS.map(t => {
+                                  const min = parseTimeToMin(t);
+                                  const booked = min !== null && bookedMins.has(min);
+                                  return <option key={t} value={t} disabled={booked} style={booked ? { color: '#ef4444' } : {}}>{booked ? t + ' (Conflict)' : t}</option>;
+                                })}
+                              </select>
+                            );
+                          })()}
                         </td>
                         {/* 9: Time To */}
                         <td data-row={idx} data-col={9}>
                           <select className="ss-cell" value={row.timeTo || ''}
                             onChange={e => handleCellChange(row.id, 'timeTo', e.target.value)}>
                             <option value="">--</option>
-                            {getValidToSlots(row.timeSlot).map(t => <option key={t} value={t}>{t}</option>)}
+                            {getValidToSlots(row.timeSlot, row, rows.filter(r => r.id !== row.id), qcRows).map(({ slot, booked }) => (
+                              <option key={slot} value={slot} disabled={booked} style={booked ? { color: '#ef4444' } : {}}>
+                                {booked ? slot + ' (Conflict)' : slot}
+                              </option>
+                            ))}
                           </select>
                         </td>
                         {/* 10: Duration */}
@@ -617,16 +687,29 @@ export default function RecurringTasks() {
                       </td>
                       {/* Time From */}
                       <td>
-                        <select className="ss-cell" value={newRow.timeSlot} onChange={e => updateNewRowField('timeSlot', e.target.value)}>
-                          <option value="">--</option>
-                          {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
+                        {(() => {
+                          const bookedMins = getBookedMinutes(newRow, rows, qcRows);
+                          return (
+                            <select className="ss-cell" value={newRow.timeSlot} onChange={e => updateNewRowField('timeSlot', e.target.value)}>
+                              <option value="">--</option>
+                              {TIME_SLOTS.map(t => {
+                                const min = parseTimeToMin(t);
+                                const booked = min !== null && bookedMins.has(min);
+                                return <option key={t} value={t} disabled={booked} style={booked ? { color: '#ef4444' } : {}}>{booked ? t + ' (Conflict)' : t}</option>;
+                              })}
+                            </select>
+                          );
+                        })()}
                       </td>
                       {/* Time To */}
                       <td>
                         <select className="ss-cell" value={newRow.timeTo || ''} onChange={e => updateNewRowField('timeTo', e.target.value)}>
                           <option value="">--</option>
-                          {getValidToSlots(newRow.timeSlot).map(t => <option key={t} value={t}>{t}</option>)}
+                          {getValidToSlots(newRow.timeSlot, newRow, rows, qcRows).map(({ slot, booked }) => (
+                            <option key={slot} value={slot} disabled={booked} style={booked ? { color: '#ef4444' } : {}}>
+                              {booked ? slot + ' (Conflict)' : slot}
+                            </option>
+                          ))}
                         </select>
                       </td>
                       {/* Duration */}

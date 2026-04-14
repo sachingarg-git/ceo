@@ -148,17 +148,15 @@ export default function DailySchedule() {
   const scheduled = data?.scheduled || [];
   const waiting = data?.waiting || [];
 
-  // ─── Build occupied slot map (slots between from→to of QC tasks) ───────────
+  // ─── Build occupied slot map (slots between from→to of QC + RT tasks) ───────
   const { occupiedMap, scheduledQcSlots } = React.useMemo(() => {
     const oMap = {};        // time → task description (for "continued" display)
     const schedQc = {};     // time → full QC row (the START slot of a QC task)
 
+    // QC tasks: mark start + in-between slots
     const todayQc = qcRows.filter(r => r.schedDate === date && r.schedTimeFrom);
     todayQc.forEach(r => {
-      // Mark the start slot as a QC-scheduled task
       schedQc[r.schedTimeFrom] = r;
-
-      // Mark in-between slots as occupied
       const fromIdx = ALL_SLOTS.indexOf(r.schedTimeFrom);
       const toIdx = r.schedTimeTo ? ALL_SLOTS.indexOf(r.schedTimeTo) : -1;
       if (fromIdx >= 0 && toIdx > fromIdx) {
@@ -167,18 +165,61 @@ export default function DailySchedule() {
         }
       }
     });
+
+    // RT tasks from timeGrid: mark start + all in-between slots as occupied
+    timeGrid.forEach(slot => {
+      if (!slot.task || slot.task.source !== 'RT') return;
+      const task = slot.task;
+      const fromTime = task.schedTime || slot.time;
+      const toTime = task.schedTimeTo || '';
+      if (!fromTime || !toTime) return;
+      const fromIdx = ALL_SLOTS.indexOf(fromTime);
+      const toIdx = ALL_SLOTS.indexOf(toTime);
+      if (fromIdx >= 0 && toIdx > fromIdx) {
+        // Mark all slots from fromIdx+1 up to (but not including) toIdx as occupied
+        for (let j = fromIdx + 1; j < toIdx; j++) {
+          oMap[ALL_SLOTS[j]] = task.task || 'Occupied';
+        }
+      }
+    });
+
     return { occupiedMap: oMap, scheduledQcSlots: schedQc };
-  }, [qcRows, date]);
+  }, [qcRows, date, timeGrid]);
+
+  // ─── Current time in minutes (for filtering past slots) ──────────────────
+  const nowMinutes = React.useMemo(() => {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  }, []);
+
+  function parseSlotMinutes(timeStr) {
+    if (!timeStr) return null;
+    const m = timeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!m) return null;
+    let h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    const period = m[3].toUpperCase();
+    if (period === 'PM' && h !== 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+    return h * 60 + min;
+  }
 
   // ─── Partition timeGrid into two grids ────────────────────────────────────
   // Top Grid  → slots that have a scheduled task (from RT/API) OR a QC task starting at that time
-  // Bottom Grid → slots that are empty AND not "occupied" (continued) by any task
+  // Bottom Grid → slots that are empty AND not "occupied" (continued) by any task AND not in the past (for today)
   const { scheduledGrid, availableGrid } = React.useMemo(() => {
     const sg = [];   // scheduled time blocks
     const ag = [];   // available/free slots
+    const isToday = date === new Date().toISOString().slice(0, 10);
 
     timeGrid.forEach(slot => {
       const hasApiTask = !!slot.task;
+
+      // Skip past slots for today in the free slots list
+      if (!hasApiTask && isToday) {
+        const slotMin = parseSlotMinutes(slot.time);
+        if (slotMin !== null && slotMin <= nowMinutes) return; // past — skip from free list
+      }
       const hasQcTask  = !!scheduledQcSlots[slot.time];
       const isOccupied = !!occupiedMap[slot.time];  // mid-span slot
 
@@ -290,7 +331,7 @@ export default function DailySchedule() {
               ? qcRows.find(r => r.id === task.rowNum || r._rowNum === task.rowNum)
               : null;
             const fromTime = qcRow?.schedTimeFrom || task.schedTime || slot.time;
-            const toTime   = qcRow?.schedTimeTo   || task.schedTimeTo || '';
+            const toTime   = qcRow?.schedTimeTo || task.schedTimeTo || '';
             if (toTime) {
               return (
                 <span style={{
@@ -483,90 +524,131 @@ export default function DailySchedule() {
           <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
             {/* Header */}
             <div style={{
-              padding: '13px 20px',
+              padding: '14px 20px',
               borderBottom: '1px solid var(--border)',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              background: 'linear-gradient(90deg, rgba(100,116,139,0.06) 0%, transparent 100%)',
+              background: 'linear-gradient(135deg, rgba(16,185,129,0.07) 0%, rgba(14,165,233,0.04) 100%)',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{
-                  fontSize: 16, background: 'var(--muted)', color: '#fff',
-                  borderRadius: 8, width: 28, height: 28, display: 'inline-flex',
-                  alignItems: 'center', justifyContent: 'center',
-                }}>🕐</span>
+                  fontSize: 15, background: 'linear-gradient(135deg,#10b981,#0ea5e9)',
+                  color: '#fff', borderRadius: 10, width: 32, height: 32,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(16,185,129,0.25)',
+                }}>🟢</span>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>Available Time Slots</div>
                   <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
-                    Open slots — not occupied by any scheduled task
+                    Open windows — not occupied by any task
                   </div>
                 </div>
               </div>
               <span style={{
-                fontSize: 11, fontWeight: 700, color: 'var(--muted)',
-                background: 'rgba(100,116,139,0.1)', borderRadius: 20,
-                padding: '3px 12px',
+                fontSize: 12, fontWeight: 800, color: '#059669',
+                background: 'rgba(16,185,129,0.12)', borderRadius: 20,
+                padding: '4px 14px', border: '1px solid rgba(16,185,129,0.25)',
               }}>
-                {availableGrid.length} free slot{availableGrid.length !== 1 ? 's' : ''}
+                {availableGrid.length} free
               </span>
             </div>
 
-            {/* Table */}
-            <div style={{ overflowY: 'auto', maxHeight: '38vh' }}>
-              <table className="data-table" style={{ marginBottom: 0 }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: 100 }}>Time</th>
-                    <th>Slot</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {availableGrid.length === 0 ? (
-                    <tr>
-                      <td colSpan={2} style={{ textAlign: 'center', padding: 28, opacity: 0.4, fontSize: 12 }}>
-                        All time slots are occupied today
-                      </td>
-                    </tr>
-                  ) : availableGrid.map((slot, i) => {
-                    const c = FREE_SLOT_COLORS[i % FREE_SLOT_COLORS.length];
-                    const delay = `${(i * 0.18) % 2.0}s`;
-                    return (
-                      <tr key={i} className="free-slot-row" style={{
-                        background: c.bg,
-                        borderLeft: `3px solid ${c.border}`,
-                        animationDelay: delay,
-                        transition: 'background 0.3s',
-                      }}>
-                        <td style={{
-                          fontWeight: 700, fontSize: 12,
-                          color: c.text, whiteSpace: 'nowrap',
-                        }}>
-                          {slot.time}
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {/* Blinking dot */}
-                            <span className="free-slot-dot" style={{
-                              display: 'inline-block',
-                              width: 7, height: 7, borderRadius: '50%',
-                              background: c.dot,
-                              flexShrink: 0,
-                              animationDelay: delay,
-                            }} />
-                            <span className="free-slot-label" style={{
-                              fontSize: 11, color: c.text,
-                              fontWeight: 600,
-                              animationDelay: delay,
-                            }}>
-                              Free — available to schedule
-                            </span>
+            {/* Chip grid */}
+            {availableGrid.length === 0 ? (
+              <div style={{ padding: '32px 20px', textAlign: 'center' }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>🎯</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>All slots occupied!</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>No free time windows today</div>
+              </div>
+            ) : (
+              <div style={{ padding: '16px 20px', overflowY: 'auto', maxHeight: '34vh' }}>
+                {/* Group consecutive slots into blocks */}
+                {(() => {
+                  // Build groups of consecutive free slots
+                  const groups = [];
+                  let current = null;
+                  availableGrid.forEach((slot, i) => {
+                    const slotIdx = ALL_SLOTS.indexOf(slot.time);
+                    if (!current) {
+                      current = { start: slot.time, end: slot.time, slotIdx, slots: [slot] };
+                    } else {
+                      const prevIdx = ALL_SLOTS.indexOf(current.slots[current.slots.length - 1].time);
+                      if (slotIdx === prevIdx + 1) {
+                        current.slots.push(slot);
+                        current.end = slot.time;
+                      } else {
+                        groups.push(current);
+                        current = { start: slot.time, end: slot.time, slotIdx, slots: [slot] };
+                      }
+                    }
+                  });
+                  if (current) groups.push(current);
+
+                  const blockColors = [
+                    { bg: 'linear-gradient(135deg,rgba(16,185,129,0.1),rgba(16,185,129,0.04))', border: '#10b981', text: '#047857', badge: '#dcfce7', badgeText: '#166534' },
+                    { bg: 'linear-gradient(135deg,rgba(14,165,233,0.1),rgba(14,165,233,0.04))', border: '#0ea5e9', text: '#0369a1', badge: '#dbeafe', badgeText: '#1e40af' },
+                    { bg: 'linear-gradient(135deg,rgba(139,92,246,0.1),rgba(139,92,246,0.04))', border: '#8b5cf6', text: '#6d28d9', badge: '#ede9fe', badgeText: '#4c1d95' },
+                    { bg: 'linear-gradient(135deg,rgba(245,158,11,0.1),rgba(245,158,11,0.04))', border: '#f59e0b', text: '#b45309', badge: '#fef3c7', badgeText: '#78350f' },
+                    { bg: 'linear-gradient(135deg,rgba(20,184,166,0.1),rgba(20,184,166,0.04))', border: '#14b8a6', text: '#0f766e', badge: '#ccfbf1', badgeText: '#134e4a' },
+                  ];
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {groups.map((group, gi) => {
+                        const c = blockColors[gi % blockColors.length];
+                        const slotCount = group.slots.length;
+                        const durationMins = slotCount * 30;
+                        const durationLabel = durationMins >= 60
+                          ? `${Math.floor(durationMins/60)}h${durationMins%60 ? ` ${durationMins%60}m` : ''}`
+                          : `${durationMins}m`;
+
+                        return (
+                          <div key={gi} style={{
+                            background: c.bg,
+                            border: `1.5px solid ${c.border}`,
+                            borderRadius: 12,
+                            padding: '10px 14px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            gap: 12,
+                          }}>
+                            {/* Left: time range */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div style={{
+                                width: 4, height: 36, borderRadius: 4,
+                                background: c.border, flexShrink: 0,
+                              }} />
+                              <div>
+                                <div style={{ fontWeight: 800, fontSize: 14, color: c.text }}>
+                                  {group.start}
+                                  {group.end !== group.start && <span style={{ fontWeight: 400, fontSize: 12, margin: '0 4px' }}>→</span>}
+                                  {group.end !== group.start && group.end}
+                                </div>
+                                <div style={{ fontSize: 10, color: c.text, opacity: 0.7, marginTop: 2 }}>
+                                  {slotCount} slot{slotCount > 1 ? 's' : ''} · {durationLabel} free
+                                </div>
+                              </div>
+                            </div>
+                            {/* Right: chips for each slot */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end' }}>
+                              {group.slots.map((s, si) => (
+                                <span key={si} style={{
+                                  fontSize: 10, fontWeight: 700,
+                                  background: c.badge, color: c.badgeText,
+                                  border: `1px solid ${c.border}`,
+                                  borderRadius: 6, padding: '2px 7px',
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  {s.time}
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         </div>
 

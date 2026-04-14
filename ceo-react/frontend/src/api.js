@@ -96,6 +96,7 @@ export const api = {
   // Companies
   verifyGST: (gstin) => request('/companies/verify-gst', { method: 'POST', body: JSON.stringify({ gstin }) }),
   companySignup: (data) => request('/companies/signup', { method: 'POST', body: JSON.stringify(data) }),
+  companySignupNoGst: (data) => request('/companies/signup-no-gst', { method: 'POST', body: JSON.stringify(data) }),
   companyLogin: (username, password) => request('/companies/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   getCompanies: () => request('/companies'),
   approveCompany: (id) => request(`/companies/${id}/approve`, { method: 'PUT' }),

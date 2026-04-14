@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
 
-const PRODUCTS = [
-  'Web Development', 'AI Solutions', 'Cloud Services', 'CCTV & Surveillance',
-  'IT Support', 'Networking', 'Software Development', 'Digital Marketing',
-  'Cyber Security', 'ERP Solutions', 'Mobile App Development', 'Data Analytics',
-];
-
 export default function Login({ onLogin, loading, onSignUp }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -24,26 +18,13 @@ export default function Login({ onLogin, loading, onSignUp }) {
     }
   }
 
-  const marqueeItems = [...PRODUCTS, ...PRODUCTS];
-
   return (
     <div className="login-page-bg">
-      {/* Top Marquee Strip */}
-      <div className="login-marquee-strip">
-        <div className="login-marquee-track">
-          {marqueeItems.map((p, i) => (
-            <span key={i} className="login-marquee-item">
-              <span className="login-marquee-dot" />
-              {p}
-            </span>
-          ))}
-        </div>
-      </div>
 
       {/* Brand Header with Logo */}
-      <div style={{ textAlign: 'center', marginBottom: 24 }}>
-        <img src="/wizone-logo.png" alt="Wizone AI Labs" style={{ height: 70, marginBottom: 8 }} />
-        <div style={{ fontSize: 20, color: '#1E293B', letterSpacing: 2, fontWeight: 900 }}>EA to M.D</div>
+      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+        <img src="/wizone-logo.png" alt="Wizone AI Labs" style={{ height: 60, marginBottom: 6 }} />
+        <div style={{ fontSize: 18, color: '#1E293B', letterSpacing: 3, fontWeight: 800 }}>EA to M.D</div>
       </div>
 
       {/* Sliding Login/Register Container */}
@@ -70,7 +51,7 @@ export default function Login({ onLogin, loading, onSignUp }) {
 
         {/* Register Panel */}
         <div className="login-form-box register-side">
-          <form onSubmit={e => { e.preventDefault(); if (onSignUp) onSignUp(); }}>
+          <form onSubmit={e => { e.preventDefault(); if (onSignUp) onSignUp('gst'); }}>
             <h1>Sign Up</h1>
             <p style={{ fontSize: 12, color: '#94A3B8', marginTop: -6, marginBottom: 12 }}>Register your company with GST</p>
             <div style={{ textAlign: 'center', padding: '16px 0' }}>
@@ -80,8 +61,20 @@ export default function Login({ onLogin, loading, onSignUp }) {
                 Verify your GST number to register<br />your company and get started
               </div>
             </div>
-            <button type="submit" className="login-btn-submit">
+            <button type="submit" className="login-btn-submit" style={{ marginBottom: 10 }}>
               Register with GST &rarr;
+            </button>
+            <button
+              type="button"
+              onClick={() => onSignUp && onSignUp('no-gst')}
+              style={{
+                width: '100%', padding: '11px 0', borderRadius: 8,
+                border: '1.5px solid #CBD5E1', background: '#fff',
+                color: '#475569', fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Register without GST Number
             </button>
           </form>
         </div>
@@ -102,9 +95,13 @@ export default function Login({ onLogin, loading, onSignUp }) {
       </div>
 
       {/* Footer */}
-      <div style={{ marginTop: 20, textAlign: 'center' }}>
-        <div style={{ color: '#1E293B', fontSize: 11, letterSpacing: 1, fontWeight: 600 }}>
-          &copy; {new Date().getFullYear()} Wizone AI Labs Pvt Ltd &mdash; All Rights Reserved
+      <div style={{ marginTop: 12, textAlign: 'center' }}>
+        <div style={{ color: '#1E293B', fontSize: 11, fontWeight: 600, letterSpacing: 0.5 }}>
+          &copy; {new Date().getFullYear()}{' '}
+          <a href="https://wizone.ai/" target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 700 }}>
+            Wizone AI Labs Pvt Ltd
+          </a>
+          {' '}&mdash; All Rights Reserved
         </div>
       </div>
     </div>

@@ -274,6 +274,7 @@ async function computeSomedayList(companyId) {
         slStatus: r.SLStatus || 'Scheduled',
         frequency: freq,
         timeSlot: r.TimeSlot || '',
+        timeTo: r.TimeTo || '',
         nextOccurrence: nextOcc ? formatDateDD(nextOcc) : '',
         nextOccurrenceISO: nextOcc ? formatDateISO(nextOcc) : '',
         isDue: true,
@@ -316,6 +317,7 @@ async function computeSomedayList(companyId) {
     if (doneFlags[doneKey] === 'Yes') finalStatus = 'Completed';
 
     const rtTime = rt.timeSlot || '';
+    const rtTimeTo = rt.timeTo || '';
     unified.push({
       seq, source: 'RT', rowNum: rt.rowNum, task: rt.task,
       priority: rt.priority, batchType: rt.batchType,
@@ -324,6 +326,7 @@ async function computeSomedayList(companyId) {
       waitNum: isWaiting ? waitNum : null,
       schedDate: rt.nextOccurrenceISO || '',
       schedTime: rtTime,
+      schedTimeTo: rtTimeTo,
       timeKey: rt.nextOccurrenceISO ? rt.nextOccurrenceISO + '|' + rtTime : '',
       frequency: rt.frequency, nextOccurrence: rt.nextOccurrence,
       isDue: true, notes: rt.notes, nwRank: 0,

@@ -252,14 +252,21 @@ export default function QuickCapture() {
       }
     });
 
-    // recurring tasks: use _nextOccurrenceISO (date part) + timeSlot
-    recurringTasks.forEach(rt => {
-      if (rt.status !== 'Active' && rt.status !== 'active') return;
-      if (rt._nextOccurrenceISO && rt.timeSlot) {
-        const dateStr = rt._nextOccurrenceISO.substring(0, 10);
-        addRange(dateStr, rt.timeSlot, null, 'recurring-' + rt.id);
-      }
-    });
+    // Recurring tasks: block slots on every date they apply to (today + next 30 days)
+    // Uses doesRecurOn() so Daily tasks block today, Weekly blocks the right weekday, etc.
+    const today = new Date();
+    for (let d = 0; d < 30; d++) {
+      const dt = new Date(today);
+      dt.setDate(today.getDate() + d);
+      const dateStr = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
+      recurringTasks.forEach(rt => {
+        if ((rt.status || '').toLowerCase() !== 'active') return;
+        if (!rt.timeSlot) return;
+        if (doesRecurOn(rt, dateStr)) {
+          addRange(dateStr, rt.timeSlot, rt.timeTo || null, 'recurring-' + rt.id);
+        }
+      });
+    }
 
     return map;
   }, [rows, recurringTasks]);
@@ -270,11 +277,18 @@ export default function QuickCapture() {
     if (!recurringTasks.length) return conflicts;
     rows.forEach(r => {
       if (!r.schedDate || !r.schedTimeFrom) return;
+      const rFromMin = parseTimeSlot(r.schedTimeFrom);
+      if (rFromMin === null) return;
       recurringTasks.forEach(rt => {
-        if (rt.status !== 'Active' && rt.status !== 'active') return;
-        if (!rt._nextOccurrenceISO || !rt.timeSlot) return;
-        const rtDate = rt._nextOccurrenceISO.substring(0, 10);
-        if (r.schedDate === rtDate && r.schedTimeFrom === rt.timeSlot) {
+        if ((rt.status || '').toLowerCase() !== 'active') return;
+        if (!rt.timeSlot) return;
+        if (!doesRecurOn(rt, r.schedDate)) return;
+        // Check if QC slot overlaps with RT slot range
+        const rtFrom = parseTimeSlot(rt.timeSlot);
+        const rtTo = rt.timeTo ? parseTimeSlot(rt.timeTo) : (rtFrom !== null ? rtFrom + 30 : null);
+        if (rtFrom === null) return;
+        const rtEnd = rtTo !== null ? rtTo : rtFrom + 30;
+        if (rFromMin >= rtFrom && rFromMin < rtEnd) {
           conflicts.add(r.id);
         }
       });

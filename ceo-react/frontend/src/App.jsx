@@ -180,14 +180,23 @@ export default function App() {
   if (showSignUp && !user) {
     return (
       <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0a0b0e' }}><div className="spinner" /></div>}>
-        <SignUp onBackToLogin={() => setShowSignUp(false)} />
+        <SignUp
+          initialMode={typeof showSignUp === 'string' ? showSignUp : null}
+          onBackToLogin={() => setShowSignUp(false)}
+        />
       </Suspense>
     );
   }
 
   // Show Login page
   if (!user) {
-    return <Login onLogin={login} loading={loginLoading} onSignUp={() => setShowSignUp(true)} />;
+    return (
+      <Login
+        onLogin={login}
+        loading={loginLoading}
+        onSignUp={(mode) => setShowSignUp(mode || 'gst')}
+      />
+    );
   }
 
   // Plan expired blocking screen (company users only)

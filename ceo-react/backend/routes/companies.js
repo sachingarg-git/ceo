@@ -80,22 +80,70 @@ router.post('/verify-gst', async (req, res) => {
   }
 });
 
-// POST /api/companies/signup - Complete registration
+// POST /api/companies/signup - Complete registration (with GST or without GST)
+// Supports: { gstin, gstData, ... } for GST flow
+// Supports: { noGst: true, manualData: {...}, ... } for no-GST manual flow
 router.post('/signup', async (req, res) => {
   try {
-    const { gstin, registeredMobile, username, password, userEmail, gstData } = req.body;
+    const { gstin, registeredMobile, username, password, userEmail, gstData, noGst, manualData } = req.body;
 
-    if (!gstin || !username || !password) {
-      return res.json({ success: false, error: 'GSTIN, username and password are required' });
+    if (!username || !password) {
+      return res.json({ success: false, error: 'Username and password are required' });
     }
     if (!userEmail || !userEmail.includes('@')) {
       return res.json({ success: false, error: 'A valid email address is required' });
     }
 
+    // Determine GSTIN and company data based on mode
+    let finalGstin, companyInfo, rawResponse;
+    if (noGst) {
+      // No-GST manual flow: generate unique placeholder GSTIN
+      if (!manualData?.legalName?.trim()) {
+        return res.json({ success: false, error: 'Company Name is required' });
+      }
+      finalGstin = ('NONGST' + Date.now()).substring(0, 20);
+      companyInfo = {
+        legalName: (manualData.legalName || '').trim(),
+        tradeName: (manualData.tradeName || '').trim(),
+        businessType: (manualData.businessType || '').trim(),
+        registrationDate: '',
+        gstStatus: '',
+        stateJurisdiction: '',
+        centralJurisdiction: '',
+        address: (manualData.address || '').trim(),
+        pincode: (manualData.pincode || '').trim(),
+        contactName: (manualData.contactName || '').trim(),
+        contactMobile: '',
+        contactEmail: '',
+      };
+      rawResponse = JSON.stringify({ source: 'manual-no-gst', ...manualData });
+    } else {
+      // GST flow
+      if (!gstin) {
+        return res.json({ success: false, error: 'GSTIN is required' });
+      }
+      finalGstin = gstin;
+      companyInfo = {
+        legalName: gstData?.legalName || '',
+        tradeName: gstData?.tradeName || '',
+        businessType: gstData?.businessType || '',
+        registrationDate: gstData?.registrationDate || '',
+        gstStatus: gstData?.gstStatus || '',
+        stateJurisdiction: gstData?.stateJurisdiction || '',
+        centralJurisdiction: gstData?.centralJurisdiction || '',
+        address: gstData?.address || '',
+        pincode: gstData?.pincode || '',
+        contactName: gstData?.contactName || '',
+        contactMobile: gstData?.contactMobile || '',
+        contactEmail: gstData?.contactEmail || '',
+      };
+      rawResponse = JSON.stringify(gstData || {});
+    }
+
     // Check duplicates
-    const existingGst = await query('SELECT ID FROM Companies WHERE GSTIN = @gstin', { gstin });
+    const existingGst = await query('SELECT ID FROM Companies WHERE GSTIN = @gstin', { gstin: finalGstin });
     if (existingGst.recordset.length > 0) {
-      return res.json({ success: false, error: 'This GSTIN is already registered' });
+      return res.json({ success: false, error: noGst ? 'Registration conflict. Please try again.' : 'This GSTIN is already registered' });
     }
 
     const existingUser = await query('SELECT ID FROM Companies WHERE Username = @username', { username });
@@ -112,24 +160,74 @@ router.post('/signup', async (req, res) => {
         @stateJur, @centralJur, @address, @pincode, @contactName, @contactMobile, @contactEmail,
         @regMobile, @username, @password, @userEmail, @rawResponse)`,
       {
-        gstin,
-        legalName: gstData?.legalName || '',
-        tradeName: gstData?.tradeName || '',
-        businessType: gstData?.businessType || '',
-        regDate: gstData?.registrationDate || '',
-        gstStatus: gstData?.gstStatus || '',
-        stateJur: gstData?.stateJurisdiction || '',
-        centralJur: gstData?.centralJurisdiction || '',
-        address: gstData?.address || '',
-        pincode: gstData?.pincode || '',
-        contactName: gstData?.contactName || '',
-        contactMobile: gstData?.contactMobile || '',
-        contactEmail: gstData?.contactEmail || '',
+        gstin: finalGstin,
+        legalName: companyInfo.legalName,
+        tradeName: companyInfo.tradeName,
+        businessType: companyInfo.businessType,
+        regDate: companyInfo.registrationDate,
+        gstStatus: companyInfo.gstStatus,
+        stateJur: companyInfo.stateJurisdiction,
+        centralJur: companyInfo.centralJurisdiction,
+        address: companyInfo.address,
+        pincode: companyInfo.pincode,
+        contactName: companyInfo.contactName,
+        contactMobile: companyInfo.contactMobile,
+        contactEmail: companyInfo.contactEmail,
         regMobile: registeredMobile || '',
         username,
         password,
         userEmail: userEmail.trim().toLowerCase(),
-        rawResponse: JSON.stringify(gstData || {}),
+        rawResponse,
+      }
+    );
+
+    res.json({ success: true, id: result.recordset[0].ID, message: 'Registration submitted. Awaiting admin approval.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/companies/signup-no-gst - Register without a GST number (manual details)
+router.post('/signup-no-gst', async (req, res) => {
+  try {
+    const { manualData, registeredMobile, username, password, userEmail } = req.body;
+
+    if (!manualData?.legalName?.trim() || !username?.trim() || !password) {
+      return res.json({ success: false, error: 'Company Name, username and password are required' });
+    }
+    if (!userEmail || !userEmail.includes('@')) {
+      return res.json({ success: false, error: 'A valid email address is required' });
+    }
+
+    // Check username uniqueness
+    const existingUser = await query('SELECT ID FROM Companies WHERE Username = @username', { username });
+    if (existingUser.recordset.length > 0) {
+      return res.json({ success: false, error: 'Username already taken' });
+    }
+
+    // Generate a unique placeholder GSTIN (NONGST + 13-digit timestamp = 19 chars, fits NVARCHAR(20))
+    const placeholderGstin = ('NONGST' + Date.now()).substring(0, 20);
+
+    const result = await query(
+      `INSERT INTO Companies (GSTIN, LegalName, TradeName, BusinessType, Address, Pincode,
+        ContactName, ContactMobile, RegisteredMobile, Username, Password, UserEmail, GSTRawResponse)
+       OUTPUT INSERTED.ID
+       VALUES (@gstin, @legalName, @tradeName, @businessType, @address, @pincode,
+        @contactName, @contactMobile, @regMobile, @username, @password, @userEmail, @rawResponse)`,
+      {
+        gstin: placeholderGstin,
+        legalName: (manualData.legalName || '').trim(),
+        tradeName: (manualData.tradeName || '').trim(),
+        businessType: (manualData.businessType || '').trim(),
+        address: (manualData.address || '').trim(),
+        pincode: (manualData.pincode || '').trim(),
+        contactName: (manualData.contactName || '').trim(),
+        contactMobile: (manualData.contactMobile || '').trim(),
+        regMobile: registeredMobile || '',
+        username: username.trim(),
+        password,
+        userEmail: userEmail.trim().toLowerCase(),
+        rawResponse: JSON.stringify({ source: 'manual-no-gst', ...manualData }),
       }
     );
 
