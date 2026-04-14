@@ -15,11 +15,15 @@ function stripCompanySuffix(name) {
   return name.replace(/\s*\(.*\)\s*$/, '').trim();
 }
 
-// Get clean createdBy name for the current user (no company suffix)
+// Get clean createdBy name for the current user
 function getCreatedBy(user) {
   if (!user) return 'Unknown';
-  if (user.isSubUser) return user.username || stripCompanySuffix(user.name) || 'Unknown';
-  return stripCompanySuffix(user.name) || user.username || 'Unknown';
+  if (user.isSubUser) {
+    // Sub-user: name is "anjali (WIZONE AI LABS...)" → strip suffix → "anjali"
+    return stripCompanySuffix(user.name) || user.username || 'Unknown';
+  }
+  // Company owner: use login username, not company trade name
+  return user.username || stripCompanySuffix(user.name) || 'Unknown';
 }
 
 // Determine if the current user can see a specific task based on per-user visibility rules
@@ -175,12 +179,10 @@ export default function RecurringTasks() {
     });
     // viewMode filter — "Me Only" shows ONLY tasks created by the logged-in user
     if (viewMode === 'me') {
-      const myName = stripCompanySuffix(user?.name || '').toLowerCase();
-      const myUsername = (user?.username || '').toLowerCase();
+      const myIdentity = getCreatedBy(user).toLowerCase();
       result = result.filter(r => {
         if (!r.createdBy) return false;
-        const storedBy = stripCompanySuffix(r.createdBy).toLowerCase();
-        return storedBy === myName || storedBy === myUsername;
+        return stripCompanySuffix(r.createdBy).toLowerCase() === myIdentity;
       });
     }
     // Per-user privacy filter (only when viewMode is 'all' and has rights)

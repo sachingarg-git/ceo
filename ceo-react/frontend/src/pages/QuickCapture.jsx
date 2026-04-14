@@ -8,13 +8,15 @@ function stripCompanySuffix(name) {
   return name.replace(/\s*\(.*\)\s*$/, '').trim();
 }
 
-// Get clean createdBy name for the current user (no company suffix)
+// Get clean createdBy name for the current user
 function getCreatedBy(user) {
   if (!user) return 'Unknown';
-  // Sub-users: store just username (clean, no company suffix)
-  if (user.isSubUser) return user.username || stripCompanySuffix(user.name) || 'Unknown';
-  // Company owner: name is already TradeName or LegalName (no suffix)
-  return stripCompanySuffix(user.name) || user.username || 'Unknown';
+  if (user.isSubUser) {
+    // Sub-user: name is "anjali (WIZONE AI LABS...)" → strip suffix → "anjali"
+    return stripCompanySuffix(user.name) || user.username || 'Unknown';
+  }
+  // Company owner: use login username (e.g. "manpreet bedi"), not company trade name
+  return user.username || stripCompanySuffix(user.name) || 'Unknown';
 }
 
 // Determine if the current user can see a specific task based on per-user visibility rules
@@ -356,12 +358,11 @@ export default function QuickCapture() {
   });
   // viewMode filter — "Me Only" shows ONLY tasks created by the logged-in user
   if (viewMode === 'me') {
-    const myName = stripCompanySuffix(user?.name || '').toLowerCase();
-    const myUsername = (user?.username || '').toLowerCase();
+    // myIdentity = same value that getCreatedBy() would store for this user
+    const myIdentity = getCreatedBy(user).toLowerCase();
     filtered = filtered.filter(r => {
-      if (!r.createdBy) return false; // no createdBy = not mine
-      const storedBy = stripCompanySuffix(r.createdBy).toLowerCase();
-      return storedBy === myName || storedBy === myUsername;
+      if (!r.createdBy) return false;
+      return stripCompanySuffix(r.createdBy).toLowerCase() === myIdentity;
     });
   }
 
