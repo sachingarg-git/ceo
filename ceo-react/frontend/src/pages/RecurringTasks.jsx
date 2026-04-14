@@ -424,20 +424,20 @@ export default function RecurringTasks() {
                 <th style={{ width: 28, position: 'sticky', left: 0, zIndex: 4, background: 'var(--primary)', textAlign: 'center' }}><input type="checkbox" className="ss-check" onChange={e => toggleSelectAll(e.target.checked)} /></th>
                 <th style={{ width: 28 }}>#</th>
                 <th style={{ minWidth: 240 }}>Task Name</th>
-                <th style={{ width: 80 }}>Priority</th>
-                <th style={{ width: 100 }}>Frequency</th>
-                <th style={{ width: 95 }}>Day</th>
-                <th style={{ width: 85 }}>Wk Pos</th>
-                <th style={{ width: 100 }}>Fixed Date</th>
-                <th style={{ width: 95 }}>Time From</th>
-                <th style={{ width: 95 }}>Time To</th>
-                <th style={{ width: 75 }}>Duration</th>
-                <th style={{ width: 95 }}>Batch</th>
-                <th style={{ width: 80 }}>Status</th>
-                <th style={{ width: 95 }}>Next Occ.</th>
-                <th style={{ width: 90 }}>SL Status</th>
-                <th style={{ width: 100 }}>Created By</th>
-                <th style={{ width: 40 }}>Actions</th>
+                <th style={{ minWidth: 90 }}>Priority</th>
+                <th style={{ minWidth: 110 }}>Frequency</th>
+                <th style={{ minWidth: 120 }}>Day</th>
+                <th style={{ minWidth: 100 }}>Wk Pos</th>
+                <th style={{ minWidth: 110 }}>Fixed Date</th>
+                <th style={{ minWidth: 105 }}>Time From</th>
+                <th style={{ minWidth: 105 }}>Time To</th>
+                <th style={{ minWidth: 80 }}>Duration</th>
+                <th style={{ minWidth: 130 }}>Batch</th>
+                <th style={{ minWidth: 100 }}>Status</th>
+                <th style={{ minWidth: 100 }}>Next Occ.</th>
+                <th style={{ minWidth: 105 }}>SL Status</th>
+                <th style={{ minWidth: 110 }}>Created By</th>
+                <th style={{ minWidth: 50 }}>Actions</th>
               </tr>
             </thead>
             <tbody ref={tbodyRef} onKeyDown={handleKeyDown}>
