@@ -34,15 +34,42 @@ function addDays(dateStr, n) {
 function sourceBadge(source) {
   const s = source || '-';
   const map = {
-    QC: { bg: '#e3f2fd', color: '#1565c0' },
-    RT: { bg: '#fff8e1', color: '#f57f17' },
+    QC: { bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd', icon: '📋', label: 'Quick Capture' },
+    RT: { bg: '#fef3c7', color: '#b45309', border: '#fcd34d', icon: '🔄', label: 'Recurring' },
   };
-  const style = map[s] || { bg: '#f3e8ff', color: '#7c3aed' };
+  const style = map[s] || { bg: '#f3e8ff', color: '#7c3aed', border: '#c4b5fd', icon: '•', label: s };
   return (
     <span style={{
-      fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600,
+      fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700,
       background: style.bg, color: style.color,
-    }}>{s}</span>
+      border: `1px solid ${style.border}`,
+      display: 'inline-flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap',
+    }}>
+      <span>{style.icon}</span>
+      <span>{style.label}</span>
+    </span>
+  );
+}
+
+// Compact inline source tag (for sidebar panels)
+function sourceTag(source) {
+  const map = {
+    QC: { bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd', icon: '📋', label: 'QC' },
+    RT: { bg: '#fef3c7', color: '#b45309', border: '#fcd34d', icon: '🔄', label: 'Recurring' },
+  };
+  const style = map[source] || null;
+  if (!style) return null;
+  return (
+    <span style={{
+      fontSize: 9, padding: '1px 6px', borderRadius: 8, fontWeight: 700,
+      background: style.bg, color: style.color,
+      border: `1px solid ${style.border}`,
+      display: 'inline-flex', alignItems: 'center', gap: 2,
+      marginTop: 2,
+    }}>
+      <span>{style.icon}</span>
+      <span>{style.label}</span>
+    </span>
   );
 }
 
@@ -205,7 +232,7 @@ export default function DailySchedule() {
         <th>Assigned Task</th>
         <th style={{ width: 80 }}>Time Range</th>
         <th style={{ width: 70 }}>Priority</th>
-        <th style={{ width: 70 }}>Source</th>
+        <th style={{ width: 120 }}>Source</th>
         <th style={{ width: 100 }}>Status</th>
       </tr>
     </thead>
@@ -583,13 +610,7 @@ export default function DailySchedule() {
                         {task.task}
                       </div>
                       {task.schedTime && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{task.schedTime}</div>}
-                      {task.source && (
-                        <span style={{
-                          fontSize: 9, padding: '1px 6px', borderRadius: 8, fontWeight: 600, marginTop: 2, display: 'inline-block',
-                          background: task.source === 'QC' ? '#e3f2fd' : '#fff8e1',
-                          color: task.source === 'QC' ? '#1565c0' : '#f57f17',
-                        }}>{task.source}</span>
-                      )}
+                      {task.source && sourceTag(task.source)}
                     </div>
                     {isDone && (
                       <span style={{
@@ -628,13 +649,7 @@ export default function DailySchedule() {
                         {task.task}
                       </div>
                       {task.notes && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{task.notes}</div>}
-                      {task.source && (
-                        <span style={{
-                          fontSize: 9, padding: '1px 6px', borderRadius: 8, fontWeight: 600, marginTop: 2, display: 'inline-block',
-                          background: task.source === 'QC' ? '#e3f2fd' : '#fff8e1',
-                          color: task.source === 'QC' ? '#1565c0' : '#f57f17',
-                        }}>{task.source}</span>
-                      )}
+                      {task.source && sourceTag(task.source)}
                     </div>
                     {isDone && (
                       <span style={{
