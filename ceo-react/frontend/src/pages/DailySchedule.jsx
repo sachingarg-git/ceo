@@ -622,45 +622,69 @@ export default function DailySchedule() {
                           ? `${Math.floor(durationMins/60)}h${durationMins%60 ? ` ${durationMins%60}m` : ''}`
                           : `${durationMins}m`;
 
+                        // Determine past state for each slot in this group
+                        const slotPastFlags = group.slots.map(s => isToday && parseSlotMinutes(s.time) < nowMinutes);
+                        const allPast  = slotPastFlags.every(Boolean);
+                        const somePast = slotPastFlags.some(Boolean);
+
+                        // Red theme when the entire block has elapsed
+                        const redBlock = {
+                          bg:        'linear-gradient(135deg,rgba(239,68,68,0.08),rgba(239,68,68,0.03))',
+                          border:    '#ef4444',
+                          text:      '#dc2626',
+                          badge:     'rgba(239,68,68,0.12)',
+                          badgeText: '#dc2626',
+                          strip:     '#ef4444',
+                        };
+                        const bc = allPast ? redBlock : c;
+
                         return (
                           <div key={gi} style={{
-                            background: c.bg,
-                            border: `1.5px solid ${c.border}`,
+                            background: bc.bg,
+                            border: `1.5px solid ${bc.border}`,
                             borderRadius: 12,
                             padding: '10px 14px',
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                             gap: 12,
+                            opacity: allPast ? 0.82 : 1,
                           }}>
                             {/* Left: time range */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               <div style={{
                                 width: 4, height: 36, borderRadius: 4,
-                                background: c.border, flexShrink: 0,
+                                background: bc.border, flexShrink: 0,
                               }} />
                               <div>
-                                <div style={{ fontWeight: 800, fontSize: 14, color: c.text }}>
+                                <div style={{ fontWeight: 800, fontSize: 14, color: bc.text, display: 'flex', alignItems: 'center', gap: 6 }}>
                                   {group.start}
                                   {group.end !== group.start && <span style={{ fontWeight: 400, fontSize: 12, margin: '0 4px' }}>→</span>}
                                   {group.end !== group.start && group.end}
+                                  {allPast && <span style={{ fontSize: 9, fontWeight: 700, background: 'rgba(239,68,68,0.15)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 4, padding: '1px 5px', letterSpacing: 0.3 }}>PASSED</span>}
                                 </div>
-                                <div style={{ fontSize: 10, color: c.text, opacity: 0.7, marginTop: 2 }}>
+                                <div style={{ fontSize: 10, color: bc.text, opacity: 0.7, marginTop: 2 }}>
                                   {slotCount} slot{slotCount > 1 ? 's' : ''} · {durationLabel} free
                                 </div>
                               </div>
                             </div>
-                            {/* Right: chips for each slot */}
+                            {/* Right: chips for each slot — red if time has passed */}
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end' }}>
-                              {group.slots.map((s, si) => (
-                                <span key={si} style={{
-                                  fontSize: 10, fontWeight: 700,
-                                  background: c.badge, color: c.badgeText,
-                                  border: `1px solid ${c.border}`,
-                                  borderRadius: 6, padding: '2px 7px',
-                                  whiteSpace: 'nowrap',
-                                }}>
-                                  {s.time}
-                                </span>
-                              ))}
+                              {group.slots.map((s, si) => {
+                                const isPastChip = slotPastFlags[si];
+                                return (
+                                  <span key={si} style={{
+                                    fontSize: 10, fontWeight: 700,
+                                    background: isPastChip ? 'rgba(239,68,68,0.12)' : c.badge,
+                                    color:      isPastChip ? '#dc2626'               : c.badgeText,
+                                    border:     `1px solid ${isPastChip ? 'rgba(239,68,68,0.35)' : c.border}`,
+                                    borderRadius: 6, padding: '2px 7px',
+                                    whiteSpace: 'nowrap',
+                                    textDecoration: isPastChip ? 'line-through' : 'none',
+                                    opacity: isPastChip ? 0.75 : 1,
+                                  }}>
+                                    {s.time}
+                                  </span>
+                                );
+                              })}
                             </div>
                           </div>
                         );
