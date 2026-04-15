@@ -74,7 +74,7 @@ async function initDatabase() {
       Priority NVARCHAR(20) DEFAULT 'Medium',
       BatchType NVARCHAR(50),
       Frequency NVARCHAR(20) DEFAULT 'Daily',
-      Weekday NVARCHAR(20),
+      Weekday NVARCHAR(100),
       WeekPosition NVARCHAR(20),
       FixedDate NVARCHAR(20),
       SLStatus NVARCHAR(30) DEFAULT 'Scheduled',
@@ -453,6 +453,16 @@ async function initDatabase() {
     }
     console.log('Masters data seeded.');
   }
+
+  // ── Migrations ────────────────────────────────────────────────────────────
+  // Widen Weekday column to support comma-separated multi-day values
+  // e.g. "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday" = 47 chars
+  try {
+    await p.request().query(`
+      IF COL_LENGTH('RecurringTasks','Weekday') < 100
+        ALTER TABLE RecurringTasks ALTER COLUMN Weekday NVARCHAR(100)
+    `);
+  } catch (e) { /* column may already be correct size */ }
 
   console.log('Database tables initialized.');
 }
