@@ -103,6 +103,77 @@ function matchesNthWeekdayOfMonth(date, weekday, weekPosition) {
   return date.getDate() === 1 + offset + (pos - 1) * 7;
 }
 
+// Does this RT row occur on the given ISO date string?
+function rtOccursOnDate(rt, dateStr) {
+  if (!rt || !dateStr) return false;
+  const date = new Date(dateStr + 'T00:00:00');
+  const freq = (rt.frequency || '').toLowerCase();
+  if (freq === 'daily') {
+    if (rt.weekday && rt.weekPosition) return matchesNthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+    if (rt.weekday) {
+      const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+      return (date.getDay() + 6) % 7 === days.indexOf(rt.weekday);
+    }
+    return true; // pure daily
+  }
+  if (freq === 'weekly') {
+    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const targetDay = days.indexOf(rt.weekday);
+    if (targetDay < 0) return false;
+    if ((date.getDay() + 6) % 7 !== targetDay) return false;
+    if (rt.weekPosition) return matchesNthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+    return true;
+  }
+  if (freq === 'monthly') {
+    if (rt.fixedDate) { const fd = new Date(rt.fixedDate + 'T00:00:00'); return date.getDate() === fd.getDate(); }
+    return matchesNthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+  }
+  if (freq === 'fixed date') return dateStr === rt.fixedDate;
+  if (freq === 'yearly') {
+    if (!rt.fixedDate) return false;
+    const fd = new Date(rt.fixedDate + 'T00:00:00');
+    return date.getMonth() === fd.getMonth() && date.getDate() === fd.getDate();
+  }
+  return false;
+}
+
+// Do two RT rows share at least one common calendar day?
+function rtTasksShareDay(a, b) {
+  const freqA = (a.frequency || '').toLowerCase();
+  const freqB = (b.frequency || '').toLowerCase();
+  const dayA  = a.weekday || '';
+  const dayB  = b.weekday || '';
+  const posA  = a.weekPosition || '';
+  const posB  = b.weekPosition || '';
+
+  // Pure daily (no weekday filter) occurs every day → always shares a day
+  if (freqA === 'daily' && !dayA) return true;
+  if (freqB === 'daily' && !dayB) return true;
+
+  // Both have specific weekdays → conflict only if same weekday (and compatible positions)
+  if (dayA && dayB) {
+    if (dayA !== dayB) return false;
+    if (posA && posB && posA !== posB) return false; // different Nth position
+    return true;
+  }
+
+  // Fixed date vs fixed date
+  if (freqA === 'fixed date' && freqB === 'fixed date') return a.fixedDate === b.fixedDate;
+
+  // Fixed date vs any recurring → check if that date falls on the recurring pattern
+  if (freqA === 'fixed date' || freqB === 'fixed date') {
+    const fdTask  = freqA === 'fixed date' ? a : b;
+    const recTask = freqA === 'fixed date' ? b : a;
+    if (!fdTask.fixedDate) return false;
+    return rtOccursOnDate(recTask, fdTask.fixedDate);
+  }
+
+  // Monthly vs monthly
+  if (freqA === 'monthly' && freqB === 'monthly') return dayA === dayB && posA === posB;
+
+  return false; // safe default — no proven overlap
+}
+
 function parseTimeToMin(t) {
   if (!t) return null;
   const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
@@ -147,51 +218,29 @@ function getBookedMinutes(currentRow, otherRtRows, qcRows) {
   const bookedMins = new Set();
   if (!currentRow) return bookedMins;
 
-  // 1. Other Recurring Tasks on same day pattern
+  // 1. Other Recurring Tasks — only flag if they share at least one calendar day
   if (otherRtRows) {
     otherRtRows.forEach(other => {
       if (!other.timeSlot || (other.status || '').toLowerCase() !== 'active') return;
-      const freq = (currentRow.frequency || '').toLowerCase();
-      const oFreq = (other.frequency || '').toLowerCase();
-      let overlaps = false;
-      // If either task has weekday+weekPosition, only overlap if same day pattern
-      const curHasPos = currentRow.weekday && currentRow.weekPosition;
-      const othHasPos = other.weekday && other.weekPosition;
-      if (freq === 'daily' && oFreq === 'daily') {
-        if (curHasPos && othHasPos) overlaps = currentRow.weekday === other.weekday && currentRow.weekPosition === other.weekPosition;
-        else if (curHasPos || othHasPos) overlaps = false; // positioned daily vs every-day daily don't always conflict
-        else overlaps = true; // both every-day
-      } else if (freq === 'daily' || oFreq === 'daily') {
-        // One daily (unpositioned), one other — treat as overlapping
-        const dailyRow = freq === 'daily' ? currentRow : other;
-        overlaps = !dailyRow.weekPosition; // only if daily has no position filter
-      } else if (freq === 'weekly' && oFreq === 'weekly') {
-        overlaps = currentRow.weekday === other.weekday &&
-          (!currentRow.weekPosition || !other.weekPosition || currentRow.weekPosition === other.weekPosition);
-      } else if (freq === 'monthly' && oFreq === 'monthly') {
-        overlaps = currentRow.weekday === other.weekday && currentRow.weekPosition === other.weekPosition;
-      } else if (freq === 'fixed date' && oFreq === 'fixed date') {
-        overlaps = currentRow.fixedDate === other.fixedDate;
-      } else {
-        overlaps = true;
-      }
-      if (!overlaps) return;
+      if (!rtTasksShareDay(currentRow, other)) return; // different days — no conflict
       const otherFrom = parseTimeToMin(other.timeSlot);
-      const otherTo = other.timeTo ? parseTimeToMin(other.timeTo) : (otherFrom !== null ? otherFrom + 30 : null);
+      const otherTo   = other.timeTo ? parseTimeToMin(other.timeTo) : (otherFrom !== null ? otherFrom + 30 : null);
       if (otherFrom === null) return;
-      const otherEnd = otherTo !== null ? otherTo : otherFrom + 30;
+      const otherEnd  = otherTo !== null ? otherTo : otherFrom + 30;
       for (let m = otherFrom; m < otherEnd; m += 30) bookedMins.add(m);
     });
   }
 
-  // 2. Quick Capture rows that have a scheduled time (any date — conservative block)
+  // 2. Quick Capture rows — only add if the QC date falls on a day the current RT occurs
   if (qcRows) {
     qcRows.forEach(qc => {
       if (!qc.schedTimeFrom || qc.slStatus === 'Completed') return;
+      // If QC has a specific date, check it matches the current RT's schedule
+      if (qc.schedDate && !rtOccursOnDate(currentRow, qc.schedDate)) return;
       const qcFrom = parseTimeToMin(qc.schedTimeFrom);
-      const qcTo = qc.schedTimeTo ? parseTimeToMin(qc.schedTimeTo) : (qcFrom !== null ? qcFrom + 30 : null);
+      const qcTo   = qc.schedTimeTo ? parseTimeToMin(qc.schedTimeTo) : (qcFrom !== null ? qcFrom + 30 : null);
       if (qcFrom === null) return;
-      const qcEnd = qcTo !== null ? qcTo : qcFrom + 30;
+      const qcEnd  = qcTo !== null ? qcTo : qcFrom + 30;
       for (let m = qcFrom; m < qcEnd; m += 30) bookedMins.add(m);
     });
   }
