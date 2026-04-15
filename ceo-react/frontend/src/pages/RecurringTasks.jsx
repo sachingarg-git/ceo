@@ -210,40 +210,63 @@ function calcDuration(from, to) {
 }
 
 // ── Multi-Day Checkbox Dropdown ──────────────────────────────────────────────
-// value: comma-separated string like "Monday,Saturday" or ""
-// onChange: receives new comma-separated string
+// value:    comma-separated string like "Monday,Saturday" or ""
+// onChange: fires ONLY when the dropdown closes (not on every tick) → one API save per session
 function MultiDaySelect({ value, onChange, disabled }) {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef(null);
+  const [open, setOpen]     = React.useState(false);
+  // draft = what's checked inside the open dropdown (not yet committed)
+  const [draft, setDraft]   = React.useState([]);
+  const ref                 = React.useRef(null);
+  const onChangeRef         = React.useRef(onChange);
+  onChangeRef.current       = onChange;
 
-  const selected = value ? value.split(',').map(d => d.trim()).filter(Boolean) : [];
+  // Sync draft from value when dropdown opens
+  const committed = value ? value.split(',').map(d => d.trim()).filter(Boolean) : [];
 
-  const toggle = (day) => {
-    const next = selected.includes(day)
-      ? selected.filter(d => d !== day)
-      : [...selected, day];
-    onChange(next.join(','));
+  const openDropdown = () => {
+    if (disabled) return;
+    setDraft([...committed]); // start draft from current saved value
+    setOpen(true);
   };
 
-  const label = selected.length === 0
-    ? '--'
-    : selected.length === 1
-      ? selected[0].slice(0, 3)                       // "Mon"
-      : selected.map(d => d.slice(0, 2)).join(',');   // "Mo,Sa"
+  // Commit draft → call onChange (→ API save) only if something changed
+  const closeAndSave = React.useCallback((currentDraft) => {
+    setOpen(false);
+    const newVal = currentDraft.join(',');
+    const oldVal = (value || '');
+    if (newVal !== oldVal) onChangeRef.current(newVal);
+  }, [value]);
 
+  const toggle = (day) => {
+    setDraft(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
+  };
+
+  // Click outside → commit
   React.useEffect(() => {
+    if (!open) return;
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target)) {
+        // capture current draft before state update
+        setDraft(d => { closeAndSave(d); return d; });
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [open, closeAndSave]);
+
+  // Display label uses committed (saved) value in cell, draft inside open dropdown
+  const displaySelected = open ? draft : committed;
+  const label = displaySelected.length === 0
+    ? '--'
+    : displaySelected.length === 1
+      ? displaySelected[0].slice(0, 3)
+      : displaySelected.map(d => d.slice(0, 2)).join(',');
 
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
       <button
         type="button"
-        onClick={() => { if (!disabled) setOpen(o => !o); }}
+        onClick={openDropdown}
         disabled={disabled}
         style={{
           width: '100%', textAlign: 'left', background: 'transparent',
@@ -253,7 +276,7 @@ function MultiDaySelect({ value, onChange, disabled }) {
           opacity: disabled ? 0.4 : 1,
         }}
       >
-        <span style={{ fontWeight: selected.length > 0 ? 600 : 400 }}>{label}</span>
+        <span style={{ fontWeight: committed.length > 0 ? 600 : 400 }}>{label}</span>
         <span style={{ fontSize: 8, opacity: 0.6 }}>▼</span>
       </button>
       {open && !disabled && (
@@ -261,10 +284,10 @@ function MultiDaySelect({ value, onChange, disabled }) {
           position: 'absolute', top: '100%', left: 0, zIndex: 9999,
           background: 'var(--card)', border: '1px solid var(--border)',
           borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-          minWidth: 140, padding: '6px 0',
+          minWidth: 150, padding: '6px 0',
         }}>
           {WEEKDAYS.map(day => {
-            const checked = selected.includes(day);
+            const checked = draft.includes(day);
             return (
               <label key={day} style={{
                 display: 'flex', alignItems: 'center', gap: 8,
@@ -272,34 +295,46 @@ function MultiDaySelect({ value, onChange, disabled }) {
                 background: checked ? 'rgba(13,110,110,0.08)' : 'transparent',
                 color: checked ? 'var(--primary)' : 'var(--text)',
                 fontWeight: checked ? 600 : 400,
+                userSelect: 'none',
               }}
-                onMouseDown={e => e.preventDefault()}
+                onMouseDown={e => e.preventDefault()} // prevent dropdown close on click
                 onClick={() => toggle(day)}
               >
                 <span style={{
-                  width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                  width: 15, height: 15, borderRadius: 3, flexShrink: 0,
                   border: `2px solid ${checked ? 'var(--primary)' : 'var(--border)'}`,
                   background: checked ? 'var(--primary)' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.15s',
                 }}>
-                  {checked && <span style={{ color: '#fff', fontSize: 9, fontWeight: 900 }}>✓</span>}
+                  {checked && <span style={{ color: '#fff', fontSize: 10, fontWeight: 900, lineHeight: 1 }}>✓</span>}
                 </span>
                 {day}
               </label>
             );
           })}
-          {selected.length > 0 && (
-            <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0', padding: '4px 12px' }}>
-              <button
-                type="button"
-                onMouseDown={e => e.preventDefault()}
-                onClick={() => onChange('')}
-                style={{ fontSize: 10, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
-              >
-                ✕ Clear all
-              </button>
-            </div>
-          )}
+          {/* Footer: Clear + Done button */}
+          <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0 0', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { setDraft([]); }}
+              style={{ fontSize: 10, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+            >
+              ✕ Clear
+            </button>
+            <button
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => closeAndSave(draft)}
+              style={{
+                fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 5,
+                background: 'var(--primary)', color: '#fff', border: 'none', cursor: 'pointer',
+              }}
+            >
+              ✓ Done
+            </button>
+          </div>
         </div>
       )}
     </div>
