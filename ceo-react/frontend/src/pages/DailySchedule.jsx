@@ -216,9 +216,11 @@ export default function DailySchedule() {
       const hasApiTask = !!slot.task;
 
       // Skip past slots for today in the free slots list
+      // Use current 30-min boundary so the slot we're currently inside always shows as free
       if (!hasApiTask && isToday) {
         const slotMin = parseSlotMinutes(slot.time);
-        if (slotMin !== null && slotMin <= nowMinutes) return; // past — skip from free list
+        const currentSlotMin = Math.floor(nowMinutes / 30) * 30; // e.g. 9:58 AM → 9:30 AM boundary
+        if (slotMin !== null && slotMin < currentSlotMin) return; // strictly before current slot
       }
       const hasQcTask  = !!scheduledQcSlots[slot.time];
       const isOccupied = !!occupiedMap[slot.time];  // mid-span slot
