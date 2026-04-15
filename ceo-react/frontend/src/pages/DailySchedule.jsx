@@ -211,16 +211,35 @@ export default function DailySchedule() {
     const sg = [];   // scheduled time blocks
     const ag = [];   // available/free slots
     const isToday = date === new Date().toISOString().slice(0, 10);
+    const currentSlotMin = Math.floor(nowMinutes / 30) * 30; // e.g. 9:58 AM → 9:30 AM boundary
+
+    // Find the end-minute of the last booked slot that is at-or-before the current time boundary.
+    // This anchors the free-slot window to the end of the last task block rather than
+    // blindly to the clock — e.g. if tasks ended at 9:30 and it's now 10:15, the cutoff
+    // becomes min(10:00, 9:30) = 9:30, so the 9:30 AM slot appears as free.
+    let lastPastBookedEndMin = 0;
+    if (isToday) {
+      timeGrid.forEach(slot => {
+        const m = parseSlotMinutes(slot.time);
+        if (m === null || m > currentSlotMin) return;
+        if (slot.task || scheduledQcSlots[slot.time] || occupiedMap[slot.time]) {
+          lastPastBookedEndMin = Math.max(lastPastBookedEndMin, m + 30);
+        }
+      });
+    }
+    // Pull the cutoff back to the end of the last past booked block (if any)
+    const freeCutoff = isToday
+      ? (lastPastBookedEndMin > 0 ? Math.min(currentSlotMin, lastPastBookedEndMin) : currentSlotMin)
+      : 0;
 
     timeGrid.forEach(slot => {
       const hasApiTask = !!slot.task;
 
-      // Skip past slots for today in the free slots list
-      // Use current 30-min boundary so the slot we're currently inside always shows as free
+      // Skip past slots for today in the free slots list.
+      // freeCutoff is anchored to end-of-last-task so free window starts right after tasks end.
       if (!hasApiTask && isToday) {
         const slotMin = parseSlotMinutes(slot.time);
-        const currentSlotMin = Math.floor(nowMinutes / 30) * 30; // e.g. 9:58 AM → 9:30 AM boundary
-        if (slotMin !== null && slotMin < currentSlotMin) return; // strictly before current slot
+        if (slotMin !== null && slotMin < freeCutoff) return;
       }
       const hasQcTask  = !!scheduledQcSlots[slot.time];
       const isOccupied = !!occupiedMap[slot.time];  // mid-span slot
@@ -254,7 +273,7 @@ export default function DailySchedule() {
     });
 
     return { scheduledGrid: sg, availableGrid: ag };
-  }, [timeGrid, occupiedMap, scheduledQcSlots]);
+  }, [timeGrid, occupiedMap, scheduledQcSlots, nowMinutes, date]);
 
   const doneCount = [...scheduled, ...waiting].filter(t => t.finalStatus === 'Completed').length;
 

@@ -181,7 +181,7 @@ export default function Dashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(recentCaptures.length, 3)}, 1fr)`, gap: 12 }}>
             {recentCaptures.map((t, i) => (
               <div key={i} style={{ background: 'var(--bg)', borderRadius: 12, padding: '16px 18px', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>{t.description}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#000000', marginBottom: 8 }}>{t.description}</div>
                 <span style={{
                   fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
                   background: t.sendTo === 'Someday List' ? 'rgba(139,92,246,0.15)' : t.priority === 'High' ? 'rgba(244,63,94,0.15)' : 'rgba(59,130,246,0.15)',
