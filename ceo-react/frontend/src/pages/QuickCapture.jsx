@@ -66,31 +66,32 @@ function nthWeekdayOfMonth(date, weekday, weekPosition) {
 }
 
 // Compute whether a recurring task applies to a given date string (YYYY-MM-DD)
+// weekday may be comma-separated multi-day e.g. "Monday,Saturday"
 function doesRecurOn(rt, dateStr) {
   if (!rt || (rt.status || '').toLowerCase() !== 'active') return false;
   const date = new Date(dateStr + 'T00:00:00');
   const freq = rt.frequency;
   if (!freq) return false;
 
+  const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const dayOfWeekIdx = (date.getDay() + 6) % 7; // Mon=0
+  const weekdays = rt.weekday ? rt.weekday.split(',').map(d => d.trim()).filter(Boolean) : [];
+
   if (freq === 'Daily') {
-    // If weekday + weekPosition set → Nth weekday of each month
-    if (rt.weekday && rt.weekPosition) return nthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
-    // If only weekday set → that weekday every week
-    if (rt.weekday) {
-      const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-      return (date.getDay() + 6) % 7 === days.indexOf(rt.weekday);
+    if (weekdays.length > 0) {
+      if (rt.weekPosition && weekdays.length === 1)
+        return nthWeekdayOfMonth(date, weekdays[0], rt.weekPosition);
+      return weekdays.some(d => dayNames.indexOf(d) === dayOfWeekIdx);
     }
     return true; // pure daily
   }
 
   if (freq === 'Weekly') {
-    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    const targetDay = days.indexOf(rt.weekday);
-    if (targetDay < 0) return false;
-    const dateDay = (date.getDay() + 6) % 7;
-    if (dateDay !== targetDay) return false;
-    // If weekPosition set → also check Nth occurrence in month
-    if (rt.weekPosition) return nthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+    if (weekdays.length === 0) return false;
+    const matchesDay = weekdays.some(d => dayNames.indexOf(d) === dayOfWeekIdx);
+    if (!matchesDay) return false;
+    if (rt.weekPosition && weekdays.length === 1)
+      return nthWeekdayOfMonth(date, weekdays[0], rt.weekPosition);
     return true;
   }
 
@@ -99,7 +100,7 @@ function doesRecurOn(rt, dateStr) {
       const fd = new Date(rt.fixedDate + 'T00:00:00');
       return date.getDate() === fd.getDate();
     }
-    return nthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+    return nthWeekdayOfMonth(date, weekdays[0] || '', rt.weekPosition);
   }
 
   if (freq === 'Yearly') {

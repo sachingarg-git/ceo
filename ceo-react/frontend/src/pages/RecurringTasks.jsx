@@ -104,29 +104,39 @@ function matchesNthWeekdayOfMonth(date, weekday, weekPosition) {
 }
 
 // Does this RT row occur on the given ISO date string?
+// weekday may be comma-separated multi-day e.g. "Monday,Saturday"
 function rtOccursOnDate(rt, dateStr) {
   if (!rt || !dateStr) return false;
   const date = new Date(dateStr + 'T00:00:00');
   const freq = (rt.frequency || '').toLowerCase();
+  const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const dayOfWeekIdx = (date.getDay() + 6) % 7; // Mon=0 … Sun=6
+  // Parse multi-day weekday
+  const weekdays = rt.weekday ? rt.weekday.split(',').map(d => d.trim()).filter(Boolean) : [];
+
   if (freq === 'daily') {
-    if (rt.weekday && rt.weekPosition) return matchesNthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
-    if (rt.weekday) {
-      const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-      return (date.getDay() + 6) % 7 === days.indexOf(rt.weekday);
+    if (weekdays.length > 0) {
+      // Single day + position: Nth weekday of month
+      if (rt.weekPosition && weekdays.length === 1)
+        return matchesNthWeekdayOfMonth(date, weekdays[0], rt.weekPosition);
+      // Multi-day: occurs on any of the selected weekdays
+      return weekdays.some(d => dayNames.indexOf(d) === dayOfWeekIdx);
     }
-    return true; // pure daily
+    return true; // pure daily (every day)
   }
   if (freq === 'weekly') {
-    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    const targetDay = days.indexOf(rt.weekday);
-    if (targetDay < 0) return false;
-    if ((date.getDay() + 6) % 7 !== targetDay) return false;
-    if (rt.weekPosition) return matchesNthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+    if (weekdays.length === 0) return false;
+    const matchesDay = weekdays.some(d => dayNames.indexOf(d) === dayOfWeekIdx);
+    if (!matchesDay) return false;
+    // Position only meaningful for single day
+    if (rt.weekPosition && weekdays.length === 1)
+      return matchesNthWeekdayOfMonth(date, weekdays[0], rt.weekPosition);
     return true;
   }
   if (freq === 'monthly') {
     if (rt.fixedDate) { const fd = new Date(rt.fixedDate + 'T00:00:00'); return date.getDate() === fd.getDate(); }
-    return matchesNthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+    const wd = weekdays[0] || '';
+    return matchesNthWeekdayOfMonth(date, wd, rt.weekPosition);
   }
   if (freq === 'fixed date') return dateStr === rt.fixedDate;
   if (freq === 'yearly') {
@@ -141,19 +151,22 @@ function rtOccursOnDate(rt, dateStr) {
 function rtTasksShareDay(a, b) {
   const freqA = (a.frequency || '').toLowerCase();
   const freqB = (b.frequency || '').toLowerCase();
-  const dayA  = a.weekday || '';
-  const dayB  = b.weekday || '';
+  // Support comma-separated multi-day weekdays
+  const daysA = a.weekday ? a.weekday.split(',').map(d => d.trim()).filter(Boolean) : [];
+  const daysB = b.weekday ? b.weekday.split(',').map(d => d.trim()).filter(Boolean) : [];
   const posA  = a.weekPosition || '';
   const posB  = b.weekPosition || '';
 
   // Pure daily (no weekday filter) occurs every day → always shares a day
-  if (freqA === 'daily' && !dayA) return true;
-  if (freqB === 'daily' && !dayB) return true;
+  if (freqA === 'daily' && daysA.length === 0) return true;
+  if (freqB === 'daily' && daysB.length === 0) return true;
 
-  // Both have specific weekdays → conflict only if same weekday (and compatible positions)
-  if (dayA && dayB) {
-    if (dayA !== dayB) return false;
-    if (posA && posB && posA !== posB) return false; // different Nth position
+  // Both have specific weekdays → conflict only if any weekday overlaps
+  if (daysA.length > 0 && daysB.length > 0) {
+    const overlap = daysA.some(d => daysB.includes(d));
+    if (!overlap) return false;
+    // Position check only when both are single-day
+    if (daysA.length === 1 && daysB.length === 1 && posA && posB && posA !== posB) return false;
     return true;
   }
 
@@ -169,6 +182,8 @@ function rtTasksShareDay(a, b) {
   }
 
   // Monthly vs monthly
+  const dayA = daysA[0] || '';
+  const dayB = daysB[0] || '';
   if (freqA === 'monthly' && freqB === 'monthly') return dayA === dayB && posA === posB;
 
   return false; // safe default — no proven overlap
@@ -192,6 +207,103 @@ function calcDuration(from, to) {
   const diff = t2 - f;
   const h = Math.floor(diff / 60), m = diff % 60;
   return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+}
+
+// ── Multi-Day Checkbox Dropdown ──────────────────────────────────────────────
+// value: comma-separated string like "Monday,Saturday" or ""
+// onChange: receives new comma-separated string
+function MultiDaySelect({ value, onChange, disabled }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+
+  const selected = value ? value.split(',').map(d => d.trim()).filter(Boolean) : [];
+
+  const toggle = (day) => {
+    const next = selected.includes(day)
+      ? selected.filter(d => d !== day)
+      : [...selected, day];
+    onChange(next.join(','));
+  };
+
+  const label = selected.length === 0
+    ? '--'
+    : selected.length === 1
+      ? selected[0].slice(0, 3)                       // "Mon"
+      : selected.map(d => d.slice(0, 2)).join(',');   // "Mo,Sa"
+
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
+      <button
+        type="button"
+        onClick={() => { if (!disabled) setOpen(o => !o); }}
+        disabled={disabled}
+        style={{
+          width: '100%', textAlign: 'left', background: 'transparent',
+          border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
+          fontSize: 11, color: disabled ? 'var(--muted)' : 'var(--text)',
+          padding: '2px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          opacity: disabled ? 0.4 : 1,
+        }}
+      >
+        <span style={{ fontWeight: selected.length > 0 ? 600 : 400 }}>{label}</span>
+        <span style={{ fontSize: 8, opacity: 0.6 }}>▼</span>
+      </button>
+      {open && !disabled && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, zIndex: 9999,
+          background: 'var(--card)', border: '1px solid var(--border)',
+          borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+          minWidth: 140, padding: '6px 0',
+        }}>
+          {WEEKDAYS.map(day => {
+            const checked = selected.includes(day);
+            return (
+              <label key={day} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '5px 12px', cursor: 'pointer', fontSize: 12,
+                background: checked ? 'rgba(13,110,110,0.08)' : 'transparent',
+                color: checked ? 'var(--primary)' : 'var(--text)',
+                fontWeight: checked ? 600 : 400,
+              }}
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => toggle(day)}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                  border: `2px solid ${checked ? 'var(--primary)' : 'var(--border)'}`,
+                  background: checked ? 'var(--primary)' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {checked && <span style={{ color: '#fff', fontSize: 9, fontWeight: 900 }}>✓</span>}
+                </span>
+                {day}
+              </label>
+            );
+          })}
+          {selected.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0', padding: '4px 12px' }}>
+              <button
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => onChange('')}
+                style={{ fontSize: 10, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+              >
+                ✕ Clear all
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Returns TIME_SLOTS after fromSlot with conflict info from other RT rows + QC rows
@@ -626,20 +738,26 @@ export default function RecurringTasks() {
                             {FREQUENCIES.map(f => <option key={f} value={f}>{f}</option>)}
                           </select>
                         </td>
-                        {/* 5: Day (Weekday) */}
-                        <td data-row={idx} data-col={5}>
-                          <select className="ss-cell" value={row.weekday || ''} onChange={e => handleCellChange(row.id, 'weekday', e.target.value)} disabled={!dayEnabled}>
-                            <option value="">--</option>
-                            {WEEKDAYS.map(d => <option key={d} value={d}>{d}</option>)}
-                          </select>
+                        {/* 5: Day (Weekday) — multi-select checkboxes */}
+                        <td data-row={idx} data-col={5} style={{ overflow: 'visible' }}>
+                          <MultiDaySelect
+                            value={row.weekday || ''}
+                            onChange={v => handleCellChange(row.id, 'weekday', v)}
+                            disabled={!dayEnabled}
+                          />
                         </td>
-                        {/* 6: Week Position */}
-                        <td data-row={idx} data-col={6}>
-                          <select className="ss-cell" value={row.weekPosition || ''} onChange={e => handleCellChange(row.id, 'weekPosition', e.target.value)} disabled={!wpEnabled}>
-                            <option value="">--</option>
-                            {WEEK_POSITIONS.map(wp => <option key={wp.value} value={wp.value}>{wp.label}</option>)}
-                          </select>
-                        </td>
+                        {/* 6: Week Position — disabled when multiple days selected */}
+                        {(() => {
+                          const multiDay = (row.weekday || '').split(',').filter(d => d.trim()).length > 1;
+                          return (
+                            <td data-row={idx} data-col={6}>
+                              <select className="ss-cell" value={row.weekPosition || ''} onChange={e => handleCellChange(row.id, 'weekPosition', e.target.value)} disabled={!wpEnabled || multiDay}>
+                                <option value="">--</option>
+                                {WEEK_POSITIONS.map(wp => <option key={wp.value} value={wp.value}>{wp.label}</option>)}
+                              </select>
+                            </td>
+                          );
+                        })()}
                         {/* 7: Fixed Date */}
                         <td data-row={idx} data-col={7} style={{ background: fdEnabled ? 'rgba(13,110,110,0.06)' : 'transparent' }}>
                           <input type="date" className="ss-cell ss-date-only" value={row.fixedDate || ''}
@@ -749,19 +867,25 @@ export default function RecurringTasks() {
                           {FREQUENCIES.map(f => <option key={f} value={f}>{f}</option>)}
                         </select>
                       </td>
-                      {/* Day */}
-                      <td>
-                        <select className="ss-cell" value={newRow.weekday} onChange={e => updateNewRowField('weekday', e.target.value)} disabled={!showWeekday(newRow.frequency)}>
-                          <option value="">--</option>
-                          {WEEKDAYS.map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
+                      {/* Day — multi-select checkboxes */}
+                      <td style={{ overflow: 'visible' }}>
+                        <MultiDaySelect
+                          value={newRow.weekday}
+                          onChange={v => updateNewRowField('weekday', v)}
+                          disabled={!showWeekday(newRow.frequency)}
+                        />
                       </td>
-                      {/* Wk Pos */}
+                      {/* Wk Pos — disabled when multiple days */}
                       <td>
-                        <select className="ss-cell" value={newRow.weekPosition} onChange={e => updateNewRowField('weekPosition', e.target.value)} disabled={!showWeekPosition(newRow.frequency)}>
-                          <option value="">--</option>
-                          {WEEK_POSITIONS.map(wp => <option key={wp.value} value={wp.value}>{wp.label}</option>)}
-                        </select>
+                        {(() => {
+                          const multiDay = (newRow.weekday || '').split(',').filter(d => d.trim()).length > 1;
+                          return (
+                            <select className="ss-cell" value={newRow.weekPosition} onChange={e => updateNewRowField('weekPosition', e.target.value)} disabled={!showWeekPosition(newRow.frequency) || multiDay}>
+                              <option value="">--</option>
+                              {WEEK_POSITIONS.map(wp => <option key={wp.value} value={wp.value}>{wp.label}</option>)}
+                            </select>
+                          );
+                        })()}
                       </td>
                       {/* Fixed Date */}
                       <td style={{ background: showFixedDate(newRow.frequency) ? 'rgba(13,110,110,0.06)' : 'transparent' }}>

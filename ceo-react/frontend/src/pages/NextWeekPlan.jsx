@@ -45,20 +45,25 @@ function doesRecurOn(rt, dateStr) {
   const freq = rt.frequency;
   if (!freq) return false;
 
+  const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const dayOfWeekIdx = (date.getDay() + 6) % 7; // Mon=0
+  // Support comma-separated multi-day e.g. "Monday,Saturday"
+  const weekdays = rt.weekday ? rt.weekday.split(',').map(d => d.trim()).filter(Boolean) : [];
+
   if (freq === 'Daily') {
-    if (rt.weekday && rt.weekPosition) return nthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
-    if (rt.weekday) {
-      const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-      return (date.getDay() + 6) % 7 === days.indexOf(rt.weekday);
+    if (weekdays.length > 0) {
+      if (rt.weekPosition && weekdays.length === 1)
+        return nthWeekdayOfMonth(date, weekdays[0], rt.weekPosition);
+      return weekdays.some(d => dayNames.indexOf(d) === dayOfWeekIdx);
     }
     return true;
   }
   if (freq === 'Weekly') {
-    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    const targetDay = days.indexOf(rt.weekday);
-    if (targetDay < 0) return false;
-    if ((date.getDay() + 6) % 7 !== targetDay) return false;
-    if (rt.weekPosition) return nthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+    if (weekdays.length === 0) return false;
+    const matchesDay = weekdays.some(d => dayNames.indexOf(d) === dayOfWeekIdx);
+    if (!matchesDay) return false;
+    if (rt.weekPosition && weekdays.length === 1)
+      return nthWeekdayOfMonth(date, weekdays[0], rt.weekPosition);
     return true;
   }
   if (freq === 'Monthly') {
@@ -66,7 +71,7 @@ function doesRecurOn(rt, dateStr) {
       const fd = new Date(rt.fixedDate + 'T00:00:00');
       return date.getDate() === fd.getDate();
     }
-    return nthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+    return nthWeekdayOfMonth(date, weekdays[0] || '', rt.weekPosition);
   }
   if (freq === 'Yearly') {
     if (!rt.fixedDate) return false;

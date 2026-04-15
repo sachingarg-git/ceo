@@ -374,39 +374,49 @@ function computeNextOccurrence(freq, weekday, weekPos, fixedDate) {
   const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   const posMap = { First:1, Second:2, Third:3, Fourth:4, Last:99 };
 
+  // Support comma-separated multi-day weekdays — pick earliest next occurrence
+  const weekdays = weekday ? weekday.split(',').map(d => d.trim()).filter(Boolean) : [];
+
+  // Helper: nearest next occurrence for a single weekday name
+  function nextForDay(wd) {
+    const targetDay = dayNames.indexOf(wd);
+    if (targetDay < 0) return null;
+    const currentDay = (today.getDay() + 6) % 7;
+    const diff = (targetDay - currentDay + 7) % 7;
+    const r = new Date(today); r.setDate(r.getDate() + diff); return r;
+  }
+  // Helper: earliest date from array (ignoring nulls)
+  function earliest(dates) {
+    const valid = dates.filter(Boolean);
+    if (!valid.length) return null;
+    return valid.reduce((a, b) => a <= b ? a : b);
+  }
+
   if (freq === 'Daily') {
-    if (weekday && weekPos) {
-      // Daily + weekday + position → Nth weekday of each month
-      const targetDayIdx = dayNames.indexOf(weekday);
-      if (targetDayIdx < 0) return new Date(today);
-      const jsDayTarget = (targetDayIdx + 1) % 7;
-      const posNum = posMap[weekPos] || 1;
-      for (let mOff = 0; mOff <= 2; mOff++) {
-        let year = today.getFullYear(), month = today.getMonth() + mOff;
-        if (month > 11) { month -= 12; year++; }
-        const candidate = findNthWeekdayInMonth(year, month, jsDayTarget, posNum);
-        if (candidate && candidate >= today) return candidate;
+    if (weekdays.length > 0) {
+      if (weekPos && weekdays.length === 1) {
+        // Single day + position → Nth weekday of each month
+        const jsDayTarget = (dayNames.indexOf(weekdays[0]) + 1) % 7;
+        const posNum = posMap[weekPos] || 1;
+        for (let mOff = 0; mOff <= 2; mOff++) {
+          let year = today.getFullYear(), month = today.getMonth() + mOff;
+          if (month > 11) { month -= 12; year++; }
+          const candidate = findNthWeekdayInMonth(year, month, jsDayTarget, posNum);
+          if (candidate && candidate >= today) return candidate;
+        }
+        return null;
       }
-      return null;
-    }
-    if (weekday) {
-      // Daily + weekday only → next occurrence of that weekday
-      const targetDay = dayNames.indexOf(weekday);
-      if (targetDay < 0) return new Date(today);
-      const currentDay = (today.getDay() + 6) % 7;
-      const diff = (targetDay - currentDay + 7) % 7;
-      const result = new Date(today); result.setDate(result.getDate() + diff);
-      return result;
+      // Multi-day: return nearest among all selected weekdays
+      return earliest(weekdays.map(nextForDay));
     }
     return new Date(today); // pure daily
   }
 
   if (freq === 'Weekly') {
-    const targetDay = dayNames.indexOf(weekday);
-    if (targetDay < 0) return null;
-    if (weekPos) {
+    if (weekdays.length === 0) return null;
+    if (weekPos && weekdays.length === 1) {
       // Weekly + weekPosition → Nth weekday of each month
-      const jsDayTarget = (targetDay + 1) % 7;
+      const jsDayTarget = (dayNames.indexOf(weekdays[0]) + 1) % 7;
       const posNum = posMap[weekPos] || 1;
       for (let mOff = 0; mOff <= 2; mOff++) {
         let year = today.getFullYear(), month = today.getMonth() + mOff;
@@ -416,14 +426,12 @@ function computeNextOccurrence(freq, weekday, weekPos, fixedDate) {
       }
       return null;
     }
-    // Normal weekly: next occurrence of that weekday
-    const currentDay = (today.getDay() + 6) % 7;
-    const diff = (targetDay - currentDay + 7) % 7;
-    const result = new Date(today); result.setDate(result.getDate() + diff);
-    return result;
+    // Normal weekly (or multi-day): next occurrence of nearest selected weekday
+    return earliest(weekdays.map(nextForDay));
   }
   if (freq === 'Monthly') {
-    const targetDayIdx = dayNames.indexOf(weekday);
+    const wd = weekdays[0] || '';
+    const targetDayIdx = dayNames.indexOf(wd);
     if (targetDayIdx < 0) return null;
     const jsDayTarget = (targetDayIdx + 1) % 7;
     const posNum = posMap[weekPos] || 1;
