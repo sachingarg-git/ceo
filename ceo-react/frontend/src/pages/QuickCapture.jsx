@@ -46,6 +46,25 @@ function canSeeTaskByUser(task, currentUser, companyUsers, taskAccessGrants, isC
   return true; // Public
 }
 
+// Helper: does a given date match the Nth weekday of its month?
+function nthWeekdayOfMonth(date, weekday, weekPosition) {
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const targetDay = days.indexOf(weekday);
+  if (targetDay < 0) return false;
+  const jsTarget = (targetDay + 1) % 7;
+  const posMap = { First: 1, Second: 2, Third: 3, Fourth: 4, Last: 99 };
+  const pos = posMap[weekPosition] || 0;
+  if (!pos) return false;
+  if (pos === 99) {
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    const diff = (lastDay.getDay() - jsTarget + 7) % 7;
+    return date.getDate() === lastDay.getDate() - diff;
+  }
+  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+  const offset = (jsTarget - firstDay.getDay() + 7) % 7;
+  return date.getDate() === 1 + offset + (pos - 1) * 7;
+}
+
 // Compute whether a recurring task applies to a given date string (YYYY-MM-DD)
 function doesRecurOn(rt, dateStr) {
   if (!rt || (rt.status || '').toLowerCase() !== 'active') return false;
@@ -53,14 +72,26 @@ function doesRecurOn(rt, dateStr) {
   const freq = rt.frequency;
   if (!freq) return false;
 
-  if (freq === 'Daily') return true;
+  if (freq === 'Daily') {
+    // If weekday + weekPosition set → Nth weekday of each month
+    if (rt.weekday && rt.weekPosition) return nthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+    // If only weekday set → that weekday every week
+    if (rt.weekday) {
+      const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+      return (date.getDay() + 6) % 7 === days.indexOf(rt.weekday);
+    }
+    return true; // pure daily
+  }
 
   if (freq === 'Weekly') {
     const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const targetDay = days.indexOf(rt.weekday);
     if (targetDay < 0) return false;
-    const dateDay = (date.getDay() + 6) % 7; // 0=Monday
-    return dateDay === targetDay;
+    const dateDay = (date.getDay() + 6) % 7;
+    if (dateDay !== targetDay) return false;
+    // If weekPosition set → also check Nth occurrence in month
+    if (rt.weekPosition) return nthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
+    return true;
   }
 
   if (freq === 'Monthly') {
@@ -68,20 +99,7 @@ function doesRecurOn(rt, dateStr) {
       const fd = new Date(rt.fixedDate + 'T00:00:00');
       return date.getDate() === fd.getDate();
     }
-    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    const targetDay = days.indexOf(rt.weekday);
-    if (targetDay < 0) return false;
-    const jsTarget = (targetDay + 1) % 7;
-    const posMap = { First: 1, Second: 2, Third: 3, Fourth: 4, Last: 99 };
-    const pos = posMap[rt.weekPosition] || 1;
-    if (pos === 99) {
-      const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-      const diff = (lastDay.getDay() - jsTarget + 7) % 7;
-      return date.getDate() === lastDay.getDate() - diff;
-    }
-    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
-    const offset = (jsTarget - firstDay.getDay() + 7) % 7;
-    return date.getDate() === 1 + offset + (pos - 1) * 7;
+    return nthWeekdayOfMonth(date, rt.weekday, rt.weekPosition);
   }
 
   if (freq === 'Yearly') {

@@ -80,7 +80,27 @@ function showWeekday(freq) {
   return freq === 'Daily' || freq === 'Weekly' || freq === 'Monthly';
 }
 function showWeekPosition(freq) {
-  return freq === 'Weekly' || freq === 'Monthly';
+  // WK POS is available for Daily, Weekly, and Monthly
+  return freq === 'Daily' || freq === 'Weekly' || freq === 'Monthly';
+}
+
+// Helper: does a date match the Nth weekday of its month?
+function matchesNthWeekdayOfMonth(date, weekday, weekPosition) {
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const targetDay = days.indexOf(weekday);
+  if (targetDay < 0) return false;
+  const jsTarget = (targetDay + 1) % 7; // convert Mon-based to JS Sun-based
+  const posMap = { First: 1, Second: 2, Third: 3, Fourth: 4, Last: 99 };
+  const pos = posMap[weekPosition] || 0;
+  if (!pos) return false;
+  if (pos === 99) {
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    const diff = (lastDay.getDay() - jsTarget + 7) % 7;
+    return date.getDate() === lastDay.getDate() - diff;
+  }
+  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+  const offset = (jsTarget - firstDay.getDay() + 7) % 7;
+  return date.getDate() === 1 + offset + (pos - 1) * 7;
 }
 
 function parseTimeToMin(t) {
@@ -134,11 +154,27 @@ function getBookedMinutes(currentRow, otherRtRows, qcRows) {
       const freq = (currentRow.frequency || '').toLowerCase();
       const oFreq = (other.frequency || '').toLowerCase();
       let overlaps = false;
-      if (freq === 'daily' || oFreq === 'daily') overlaps = true;
-      else if (freq === 'weekly' && oFreq === 'weekly') overlaps = currentRow.weekday === other.weekday;
-      else if (freq === 'monthly' && oFreq === 'monthly') overlaps = currentRow.weekday === other.weekday && currentRow.weekPosition === other.weekPosition;
-      else if (freq === 'fixed date' && oFreq === 'fixed date') overlaps = currentRow.fixedDate === other.fixedDate;
-      else overlaps = true;
+      // If either task has weekday+weekPosition, only overlap if same day pattern
+      const curHasPos = currentRow.weekday && currentRow.weekPosition;
+      const othHasPos = other.weekday && other.weekPosition;
+      if (freq === 'daily' && oFreq === 'daily') {
+        if (curHasPos && othHasPos) overlaps = currentRow.weekday === other.weekday && currentRow.weekPosition === other.weekPosition;
+        else if (curHasPos || othHasPos) overlaps = false; // positioned daily vs every-day daily don't always conflict
+        else overlaps = true; // both every-day
+      } else if (freq === 'daily' || oFreq === 'daily') {
+        // One daily (unpositioned), one other — treat as overlapping
+        const dailyRow = freq === 'daily' ? currentRow : other;
+        overlaps = !dailyRow.weekPosition; // only if daily has no position filter
+      } else if (freq === 'weekly' && oFreq === 'weekly') {
+        overlaps = currentRow.weekday === other.weekday &&
+          (!currentRow.weekPosition || !other.weekPosition || currentRow.weekPosition === other.weekPosition);
+      } else if (freq === 'monthly' && oFreq === 'monthly') {
+        overlaps = currentRow.weekday === other.weekday && currentRow.weekPosition === other.weekPosition;
+      } else if (freq === 'fixed date' && oFreq === 'fixed date') {
+        overlaps = currentRow.fixedDate === other.fixedDate;
+      } else {
+        overlaps = true;
+      }
       if (!overlaps) return;
       const otherFrom = parseTimeToMin(other.timeSlot);
       const otherTo = other.timeTo ? parseTimeToMin(other.timeTo) : (otherFrom !== null ? otherFrom + 30 : null);

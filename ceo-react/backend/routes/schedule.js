@@ -371,22 +371,61 @@ async function computeSomedayList(companyId) {
 
 function computeNextOccurrence(freq, weekday, weekPos, fixedDate) {
   const today = new Date(); today.setHours(0,0,0,0);
-  if (freq === 'Daily') return new Date(today);
+  const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const posMap = { First:1, Second:2, Third:3, Fourth:4, Last:99 };
+
+  if (freq === 'Daily') {
+    if (weekday && weekPos) {
+      // Daily + weekday + position → Nth weekday of each month
+      const targetDayIdx = dayNames.indexOf(weekday);
+      if (targetDayIdx < 0) return new Date(today);
+      const jsDayTarget = (targetDayIdx + 1) % 7;
+      const posNum = posMap[weekPos] || 1;
+      for (let mOff = 0; mOff <= 2; mOff++) {
+        let year = today.getFullYear(), month = today.getMonth() + mOff;
+        if (month > 11) { month -= 12; year++; }
+        const candidate = findNthWeekdayInMonth(year, month, jsDayTarget, posNum);
+        if (candidate && candidate >= today) return candidate;
+      }
+      return null;
+    }
+    if (weekday) {
+      // Daily + weekday only → next occurrence of that weekday
+      const targetDay = dayNames.indexOf(weekday);
+      if (targetDay < 0) return new Date(today);
+      const currentDay = (today.getDay() + 6) % 7;
+      const diff = (targetDay - currentDay + 7) % 7;
+      const result = new Date(today); result.setDate(result.getDate() + diff);
+      return result;
+    }
+    return new Date(today); // pure daily
+  }
+
   if (freq === 'Weekly') {
-    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    const targetDay = days.indexOf(weekday);
+    const targetDay = dayNames.indexOf(weekday);
     if (targetDay < 0) return null;
+    if (weekPos) {
+      // Weekly + weekPosition → Nth weekday of each month
+      const jsDayTarget = (targetDay + 1) % 7;
+      const posNum = posMap[weekPos] || 1;
+      for (let mOff = 0; mOff <= 2; mOff++) {
+        let year = today.getFullYear(), month = today.getMonth() + mOff;
+        if (month > 11) { month -= 12; year++; }
+        const candidate = findNthWeekdayInMonth(year, month, jsDayTarget, posNum);
+        if (candidate && candidate >= today) return candidate;
+      }
+      return null;
+    }
+    // Normal weekly: next occurrence of that weekday
     const currentDay = (today.getDay() + 6) % 7;
     const diff = (targetDay - currentDay + 7) % 7;
     const result = new Date(today); result.setDate(result.getDate() + diff);
     return result;
   }
   if (freq === 'Monthly') {
-    const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const targetDayIdx = dayNames.indexOf(weekday);
     if (targetDayIdx < 0) return null;
     const jsDayTarget = (targetDayIdx + 1) % 7;
-    const posMap = { First:1, Second:2, Third:3, Fourth:4, Last:99 };
     const posNum = posMap[weekPos] || 1;
     for (let mOff = 0; mOff <= 2; mOff++) {
       let year = today.getFullYear(), month = today.getMonth() + mOff;
