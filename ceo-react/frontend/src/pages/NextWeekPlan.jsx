@@ -142,10 +142,20 @@ export default function NextWeekPlan() {
     return p === 'high' || p === 'urgent' || p === 'critical';
   }
 
-  /* ── Build booked slot map: { [dateISO]: Set<minutes> } ── */
+  /* ── Build booked slot map ── */
+  // dateISO → { mins: Set<number>, sources: Set<'QC'|'RT'>, names: Map<minute, {rt?, qc?}> }
   const bookedMap = useMemo(() => {
-    const map = {}; // dateISO → { mins: Set<number>, sources: Set<'QC'|'RT'> }
-    const ensure = (d) => { if (!map[d]) map[d] = { mins: new Set(), sources: new Set() }; };
+    const map = {};
+    const ensure = (d) => {
+      if (!map[d]) map[d] = { mins: new Set(), sources: new Set(), names: new Map() };
+    };
+    const addName = (d, m, source, name) => {
+      if (!map[d].names.has(m)) map[d].names.set(m, {});
+      const entry = map[d].names.get(m);
+      // Store only the start-slot name (first occurrence wins per source)
+      if (source === 'RT' && !entry.rt) entry.rt = name;
+      if (source === 'QC' && !entry.qc) entry.qc = name;
+    };
 
     // QC rows: match by schedDate
     qcRows.forEach(r => {
@@ -158,6 +168,7 @@ export default function NextWeekPlan() {
       for (let m = from; m < end; m += 30) {
         map[r.schedDate].mins.add(m);
         map[r.schedDate].sources.add('QC');
+        addName(r.schedDate, m, 'QC', r.description || r.task || '');
       }
     });
 
@@ -176,6 +187,7 @@ export default function NextWeekPlan() {
         for (let m = from; m < end; m += 30) {
           map[wd.dateISO].mins.add(m);
           map[wd.dateISO].sources.add('RT');
+          addName(wd.dateISO, m, 'RT', rt.task || rt.name || '');
         }
       });
     });
@@ -187,7 +199,8 @@ export default function NextWeekPlan() {
     const slotMin = parseSlotMin(slot);
     if (slotMin === null || !bookedMap[dateISO]) return null;
     if (!bookedMap[dateISO].mins.has(slotMin)) return null;
-    return bookedMap[dateISO].sources;
+    const entry = bookedMap[dateISO].names?.get(slotMin) || {};
+    return { sources: bookedMap[dateISO].sources, rtName: entry.rt || '', qcName: entry.qc || '' };
   }
 
   /* ── Loading / error states ── */
@@ -270,9 +283,11 @@ export default function NextWeekPlan() {
                 const display    = getTaskDisplay(task);
                 const highPri    = isHighPriority(task);
                 const booked     = getBookedInfo(wd.dateISO, slot);
-                const hasQC      = booked?.has('QC');
-                const hasRT      = booked?.has('RT');
+                const hasQC      = booked?.sources?.has('QC');
+                const hasRT      = booked?.sources?.has('RT');
                 const both       = hasQC && hasRT;
+                const rtName     = booked?.rtName || '';
+                const qcName     = booked?.qcName || '';
 
                 // Left strip colour: purple if both, blue if QC only, amber if RT only
                 const stripColor = booked
@@ -323,13 +338,27 @@ export default function NextWeekPlan() {
                       </span>
                     ) : booked ? (
                       <span style={{
-                        fontSize: 9,
-                        fontWeight: 600,
-                        color: stripColor,
-                        opacity: 0.8,
-                        letterSpacing: 0.3,
+                        display: 'flex', alignItems: 'flex-start', gap: 3,
+                        fontSize: '0.7rem', fontWeight: 600,
+                        color: stripColor, lineHeight: 1.25,
+                        overflow: 'hidden',
                       }}>
-                        {both ? '🔄 📋' : hasRT ? '🔄' : '📋'}
+                        {/* Icon */}
+                        <span style={{ flexShrink: 0, fontSize: 10, marginTop: 1 }}>
+                          {both ? '🔄' : hasRT ? '🔄' : '📋'}
+                        </span>
+                        {/* Task name — RT name takes priority, fallback to QC name */}
+                        <span style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          wordBreak: 'break-word',
+                          flex: 1,
+                        }}>
+                          {rtName || qcName}
+                        </span>
                       </span>
                     ) : null}
                   </div>
